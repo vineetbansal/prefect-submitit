@@ -1,0 +1,46 @@
+{% set name = "prefect-submitit" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name.replace('-', '_') }}-{{ version }}.tar.gz
+  # sha256: UPDATE_AFTER_FIRST_PYPI_RELEASE
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python >=3.12
+    - pip
+    - hatchling
+  run:
+    - python >=3.12
+    - prefect >=3.0
+    - submitit >=1.5
+    - cloudpickle >=3.0
+
+test:
+  imports:
+    - prefect_submitit
+  requires:
+    - pip
+  commands:
+    - pip check
+
+about:
+  home: https://github.com/uw-ssec/prefect-submitit
+  summary: A Prefect 3 TaskRunner that submits tasks to SLURM clusters via submitit
+  license: BSD-3-Clause
+  license_file: LICENSE
+  dev_url: https://github.com/uw-ssec/prefect-submitit
+
+extra:
+  recipe-maintainers:
+    # Add your GitHub username here
+    - UPDATE_WITH_GITHUB_USERNAME

@@ -1,62 +1,99 @@
-# Your Package
+# prefect-submitit
 
-A short description of what this project does.
+A [Prefect 3](https://docs.prefect.io/) TaskRunner that submits tasks to
+[SLURM](https://slurm.schedmd.com/) clusters via
+[submitit](https://github.com/facebookincubator/submitit).
 
----
+## Features
 
-## Setup Checklist
+- **Single task submission** -- submit individual Prefect tasks as SLURM jobs
+- **Job arrays** -- submit `task.map()` calls as SLURM job arrays with automatic
+  chunking when the array exceeds cluster limits
+- **Batched execution** -- group multiple items per SLURM job with
+  `units_per_worker` to reduce scheduling overhead
+- **Local mode** -- swap to local execution for testing without changing your flow
+  code (`execution_mode="local"` or `SLURM_TASKRUNNER_BACKEND=local`)
+- **Prefect UI integration** -- task run names include SLURM job IDs for easy
+  cross-referencing with `squeue`/`sacct`
 
-After creating a new repo from this template, update the following:
+## Installation
 
-- [ ] **Rename `src/your_package/`** directory to your actual package name (Python-importable, use underscores)
-- [ ] **`pyproject.toml`** — update these fields:
-  - [ ] `project.name` — your PyPI package name (e.g. `"dexterity-mypackage"`)
-  - [ ] `project.description`
-  - [ ] `project.maintainers` — name and email
-  - [ ] `tool.hatch.build.targets.wheel.packages` — point to `["src/your_package_name"]`
-  - [ ] `tool.pixi.pypi-dependencies` — match the key to `project.name`
-- [ ] **`src/your_package/__init__.py`** — update the docstring
-- [ ] **`LICENSE`** — update the copyright holder name/org
-- [ ] **`README.md`** — replace this checklist with your project's documentation
-- [ ] **Delete `pixi.lock`** and run `pixi install` to generate a fresh lockfile
+```bash
+pip install prefect-submitit
+```
 
----
+Or with conda (after the first conda-forge release):
+
+```bash
+conda install -c conda-forge prefect-submitit
+```
 
 ## Quick Start
 
-**Prerequisites:** Python 3.12+, [Pixi](https://pixi.sh)
+```python
+from prefect import flow, task
+from prefect_submitit import SlurmTaskRunner
 
-```bash
-# Install Pixi (if needed)
-curl -fsSL https://pixi.sh/install.sh | bash
+@task
+def add(x: int, y: int) -> int:
+    return x + y
 
-# Clone and install
-git clone https://github.com/your-org/your-repo.git
-cd your-repo
-pixi install
+@flow(task_runner=SlurmTaskRunner(partition="cpu", time_limit="00:10:00"))
+def my_flow():
+    # Single task
+    future = add.submit(1, 2)
+    print(future.result())  # 3
 
-# Verify
-pixi run python -c "import your_package; print('Installed successfully')"
+    # Map over inputs (submitted as a SLURM job array)
+    futures = add.map([1, 2, 3], [4, 5, 6])
+    print([f.result() for f in futures])  # [5, 7, 9]
+
+if __name__ == "__main__":
+    my_flow()
 ```
 
----
+## Configuration
+
+```python
+SlurmTaskRunner(
+    partition="gpu",          # SLURM partition
+    time_limit="04:00:00",    # Wall time (HH:MM:SS)
+    mem_gb=16,                # Memory per job
+    gpus_per_node=1,          # GPUs per job
+    units_per_worker=10,      # Items per SLURM job (batched mode)
+    execution_mode="slurm",   # "slurm" or "local"
+    slurm_array_parallelism=100,  # Max concurrent array tasks
+    log_folder="slurm_logs",  # Where submitit writes logs
+    fail_on_error=True,       # Raise on SLURM job failure
+)
+```
+
+Any additional keyword arguments are passed through to submitit (e.g.
+`slurm_gres="gpu:a100:1"`).
+
+## Local Testing
+
+Set the environment variable to skip SLURM entirely:
+
+```bash
+export SLURM_TASKRUNNER_BACKEND=local
+```
+
+Or pass it directly:
+
+```python
+SlurmTaskRunner(execution_mode="local")
+```
 
 ## Development
 
-```bash
-pixi run -e dev test    # Run tests
-pixi run -e dev fmt     # Format and lint
-```
-
-## Publishing to PyPI
+Requires [Pixi](https://pixi.sh):
 
 ```bash
-pixi run -e dev build-dist    # Build sdist + wheel
-pixi run -e dev check-dist    # Validate with twine
-pixi run -e dev upload-pypi   # Upload to PyPI
+pixi install
+pixi run -e dev test
+pixi run -e dev fmt
 ```
-
----
 
 ## License
 
