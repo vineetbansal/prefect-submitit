@@ -10,6 +10,7 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: check-yaml
+        exclude: ^recipe/
       - id: debug-statements
       - id: end-of-file-fixer
       - id: mixed-line-ending
@@ -22,7 +23,14 @@ repos:
     hooks:
       - id: prettier
         types_or: [yaml, markdown, json]
+        exclude: ^recipe/
         args: [--prose-wrap=always]
+
+  - repo: https://github.com/adamchainz/blacken-docs
+    rev: "1.19.1"
+    hooks:
+      - id: blacken-docs
+        additional_dependencies: [black==25.1.0]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "v0.13.2"
@@ -41,6 +49,9 @@ repos:
         args: []
         additional_dependencies:
           - pytest
+          - "prefect>=3.6,<4.0"
+          - submitit
+          - cloudpickle
 
   - repo: https://github.com/codespell-project/codespell
     rev: "v2.4.1"
