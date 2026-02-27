@@ -29,7 +29,7 @@ started.
 3. Install pre-commit hooks:
 
    ```bash
-   pixi run -e dev pre-commit install
+   pixi run -e dev install-hooks
    ```
 
 4. Verify everything works:

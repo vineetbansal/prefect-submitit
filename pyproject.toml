@@ -71,6 +71,8 @@ twine = ">=6.2.0,<7"
 
 [tool.pixi.feature.dev.tasks]
 test = "pytest"
+fmt = "ruff format . && ruff check --fix ."
+install-hooks = "pre-commit install"
 pre-commit = "pre-commit run --all-files"
 build-dist = "rm -rf dist/ && python -m build"
 check-dist = "python -m twine check dist/*"
