@@ -13,7 +13,7 @@ responsibly.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email **ach94@uw.edu** with:
+Instead, please email **andrewcolinhunt@gmail.com** with:
 
 - A description of the vulnerability
 - Steps to reproduce the issue
