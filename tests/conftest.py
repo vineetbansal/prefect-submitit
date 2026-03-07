@@ -21,7 +21,7 @@ def mock_runner():
     runner._cached_max_array_size = None
     runner.execution_mode = ExecutionMode.SLURM
     runner.logger = MagicMock()
-    runner.poll_interval = 30.0
+    runner.poll_interval = 5.0
     runner.max_poll_time = None
     runner.time_limit = "01:00:00"
     runner._parse_time_to_minutes.return_value = 60

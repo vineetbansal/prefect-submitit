@@ -98,7 +98,7 @@ class SlurmTaskRunner(TaskRunner):
         self.poll_interval = (
             1.0
             if poll_interval is None and self.execution_mode == ExecutionMode.LOCAL
-            else 30.0
+            else 5.0
             if poll_interval is None
             else poll_interval
         )
