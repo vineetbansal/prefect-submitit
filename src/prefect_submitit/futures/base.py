@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 import uuid
 from collections.abc import Callable
@@ -65,13 +66,28 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
     @property
     def state(self) -> State:
         slurm_state = self._job.state
-        if slurm_state == "COMPLETED":
+        normalized = slurm_state.rstrip("+")
+        if normalized == "COMPLETED":
             return Completed()
-        if slurm_state in self.TERMINAL_FAILURE_STATES:
+        if self._is_terminal_failure(slurm_state):
             return Failed(message=f"SLURM: {slurm_state}")
-        if slurm_state == "RUNNING":
+        if normalized == "RUNNING":
             return Running()
         return Pending()
+
+    def _is_terminal_failure(self, slurm_state: str) -> bool:
+        normalized = slurm_state.rstrip("+")
+        return normalized in self.TERMINAL_FAILURE_STATES or normalized.startswith(
+            "CANCELLED"
+        )
+
+    def _raise_job_failed(self, slurm_state: str) -> None:
+        try:
+            stderr = self._job.stderr()
+        except Exception:
+            stderr = "(stderr unavailable)"
+        msg = f"Job {self.slurm_job_id}: {slurm_state}\nstderr:\n{stderr}"
+        raise SlurmJobFailed(msg)
 
     def wait(self, timeout: float | None = None) -> None:
         effective_timeout = timeout or self._max_poll_time
@@ -80,22 +96,24 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
         while not self._job.done():
             elapsed = time.time() - start
             if effective_timeout and elapsed > effective_timeout:
+                slurm_state = self._job.state
                 msg = (
                     f"Job {self.slurm_job_id} did not complete "
-                    f"within {effective_timeout:.0f}s"
+                    f"within {effective_timeout:.0f}s "
+                    f"(last observed state: {slurm_state})"
                 )
                 raise TimeoutError(msg)
 
             slurm_state = self._job.state
-            if slurm_state in self.TERMINAL_FAILURE_STATES:
-                try:
-                    stderr = self._job.stderr()
-                except Exception:
-                    stderr = "(stderr unavailable)"
-                msg = f"Job {self.slurm_job_id}: {slurm_state}\nstderr:\n{stderr}"
-                raise SlurmJobFailed(msg)
+            if self._is_terminal_failure(slurm_state):
+                self._raise_job_failed(slurm_state)
 
             time.sleep(self._poll_interval)
+
+        # Post-loop check: job.done() returned True but may have failed
+        slurm_state = self._job.state
+        if self._is_terminal_failure(slurm_state):
+            self._raise_job_failed(slurm_state)
 
         self._done = True
         self._fire_callbacks()
@@ -151,6 +169,15 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
                     callback_name,
                     self.slurm_job_id,
                 )
+
+    def cancel(self) -> bool:
+        try:
+            subprocess.run(
+                ["scancel", self.slurm_job_id], check=True, capture_output=True
+            )
+            return True
+        except subprocess.CalledProcessError:
+            return False
 
     def logs(self) -> tuple[str, str]:
         return self._job.stdout() or "", self._job.stderr() or ""
