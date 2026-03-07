@@ -65,6 +65,7 @@ pytest = "*"
 ruff = ">=0.6"
 pre-commit = ">=4.3.0,<5"
 mypy = ">=1.19.0,<2"
+pytest-timeout = "*"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 build = ">=1.4.0,<2"
@@ -97,6 +98,10 @@ log_cli_level = "INFO"
 xfail_strict = true
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 filterwarnings = ["error"]
+markers = [
+    "slurm: tests that submit real SLURM jobs (deselected unless --run-slurm)",
+    "slurm_gpu: tests that require a GPU partition",
+]
 
 [tool.ruff]
 extend-exclude = [".pixi"]

@@ -1,0 +1,250 @@
+"""Fixtures, hooks, and configuration for SLURM integration tests."""
+
+from __future__ import annotations
+
+import dataclasses
+import os
+import socket
+import subprocess
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+
+import pytest
+
+from prefect_submitit import SlurmTaskRunner
+
+from .helpers import find_free_port
+
+# ---------------------------------------------------------------------------
+# Pytest hooks
+# ---------------------------------------------------------------------------
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-slurm",
+        action="store_true",
+        default=False,
+        help="Run tests that require a real SLURM cluster",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--run-slurm"):
+        skip = pytest.mark.skip(reason="need --run-slurm to run")
+        for item in items:
+            if "slurm" in item.keywords:
+                item.add_marker(skip)
+
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class SlurmTestConfig:
+    partition: str
+    mem_gb: int
+    time_limit: str
+    account: str | None
+    qos: str | None
+    max_wait: int
+    gpu_partition: str | None
+    log_dir: Path
+
+
+@pytest.fixture(scope="session")
+def slurm_config():
+    """Read SLURM test configuration from environment variables."""
+    partition = os.environ.get("SLURM_TEST_PARTITION")
+    if not partition:
+        pytest.skip("SLURM_TEST_PARTITION not set")
+
+    log_dir_env = os.environ.get("SLURM_TEST_LOG_DIR")
+    if log_dir_env:
+        log_dir = Path(log_dir_env)
+        log_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        log_dir = Path(tempfile.mkdtemp(prefix="slurm_test_logs_"))
+
+    return SlurmTestConfig(
+        partition=partition,
+        mem_gb=int(os.environ.get("SLURM_TEST_MEM_GB", "1")),
+        time_limit=os.environ.get("SLURM_TEST_TIME_LIMIT", "00:05:00"),
+        account=os.environ.get("SLURM_TEST_ACCOUNT"),
+        qos=os.environ.get("SLURM_TEST_QOS"),
+        max_wait=int(os.environ.get("SLURM_TEST_MAX_WAIT", "300")),
+        gpu_partition=os.environ.get("SLURM_TEST_GPU_PARTITION"),
+        log_dir=log_dir,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SLURM availability guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _check_slurm_available(request):
+    if not request.config.getoption("--run-slurm"):
+        return
+    try:
+        subprocess.run(
+            ["squeue", "--me", "--noheader"],
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError) as e:
+        pytest.skip(f"SLURM not available: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Prefect server
+# ---------------------------------------------------------------------------
+
+
+def _wait_for_server(url, timeout=30):
+    """Poll until the Prefect API is responding."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url + "/health", timeout=5):
+                return
+        except Exception:
+            time.sleep(1)
+    msg = f"Prefect server at {url} did not become ready within {timeout}s"
+    raise RuntimeError(msg)
+
+
+def _get_routable_hostname() -> str:
+    """Return a hostname or IP that compute nodes can reach."""
+    hostname = socket.getfqdn()
+    try:
+        socket.getaddrinfo(hostname, None)
+        return hostname
+    except socket.gaierror:
+        return socket.gethostbyname(socket.gethostname())
+
+
+@pytest.fixture(scope="session", autouse=True)
+def prefect_server(request, slurm_config):  # noqa: ARG001
+    """Start an ephemeral Prefect server for the test session.
+
+    If PREFECT_API_URL is already set, reuses the existing server.
+    """
+    if not request.config.getoption("--run-slurm"):
+        yield None
+        return
+
+    existing_url = os.environ.get("PREFECT_API_URL")
+    if existing_url:
+        yield existing_url
+        return
+
+    hostname = _get_routable_hostname()
+    port = find_free_port()
+    api_url = f"http://{hostname}:{port}/api"
+
+    proc = subprocess.Popen(
+        ["prefect", "server", "start", "--host", "0.0.0.0", "--port", str(port)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    try:
+        _wait_for_server(api_url, timeout=30)
+    except RuntimeError:
+        proc.terminate()
+        proc.wait(timeout=10)
+        pytest.skip("Could not start Prefect server")
+
+    old_url = os.environ.get("PREFECT_API_URL")
+    os.environ["PREFECT_API_URL"] = api_url
+    yield api_url
+
+    os.environ.pop("PREFECT_API_URL", None)
+    if old_url:
+        os.environ["PREFECT_API_URL"] = old_url
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Runner fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def slurm_runner(slurm_config, tmp_path):
+    """A configured SlurmTaskRunner for testing."""
+    extra_kwargs = {}
+    if slurm_config.account:
+        extra_kwargs["slurm_account"] = slurm_config.account
+    if slurm_config.qos:
+        extra_kwargs["slurm_qos"] = slurm_config.qos
+
+    return SlurmTaskRunner(
+        partition=slurm_config.partition,
+        time_limit=slurm_config.time_limit,
+        mem_gb=slurm_config.mem_gb,
+        gpus_per_node=0,
+        poll_interval=2.0,
+        max_poll_time=slurm_config.max_wait + 300,
+        log_folder=str(tmp_path / "slurm_logs"),
+        **extra_kwargs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Job cleanup
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def slurm_jobs():
+    """Track submitted SLURM job IDs for teardown cleanup."""
+    job_ids: list[str] = []
+    yield job_ids
+    if job_ids:
+        subprocess.run(
+            ["scancel", *job_ids],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _session_job_cleanup(request):
+    """Safety-net: scancel any jobs found in log dirs at session end."""
+    yield
+    if not request.config.getoption("--run-slurm"):
+        return
+    # Best-effort cleanup of any leftover jobs
+    try:
+        result = subprocess.run(
+            ["squeue", "--me", "--noheader", "-o", "%A"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            job_ids = result.stdout.strip().split()
+            if job_ids:
+                subprocess.run(
+                    ["scancel", *job_ids],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+    except Exception:
+        pass
