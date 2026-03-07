@@ -33,3 +33,4 @@ pixi.lock
 
 # SLURM logs
 slurm_logs/
+.slurm_test_logs/

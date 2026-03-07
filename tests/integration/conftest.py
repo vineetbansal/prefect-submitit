@@ -6,7 +6,6 @@ import dataclasses
 import os
 import socket
 import subprocess
-import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -20,15 +19,6 @@ from .helpers import find_free_port
 # ---------------------------------------------------------------------------
 # Pytest hooks
 # ---------------------------------------------------------------------------
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--run-slurm",
-        action="store_true",
-        default=False,
-        help="Run tests that require a real SLURM cluster",
-    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -68,7 +58,8 @@ def slurm_config():
         log_dir = Path(log_dir_env)
         log_dir.mkdir(parents=True, exist_ok=True)
     else:
-        log_dir = Path(tempfile.mkdtemp(prefix="slurm_test_logs_"))
+        log_dir = Path.cwd() / ".slurm_test_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
 
     return SlurmTestConfig(
         partition=partition,
@@ -183,8 +174,11 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
 
 
 @pytest.fixture
-def slurm_runner(slurm_config, tmp_path):
+def slurm_runner(slurm_config):
     """A configured SlurmTaskRunner for testing."""
+    log_dir = slurm_config.log_dir / "slurm_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
     extra_kwargs = {}
     if slurm_config.account:
         extra_kwargs["slurm_account"] = slurm_config.account
@@ -198,7 +192,7 @@ def slurm_runner(slurm_config, tmp_path):
         gpus_per_node=0,
         poll_interval=2.0,
         max_poll_time=slurm_config.max_wait + 300,
-        log_folder=str(tmp_path / "slurm_logs"),
+        log_folder=str(log_dir),
         **extra_kwargs,
     )
 

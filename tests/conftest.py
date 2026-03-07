@@ -9,6 +9,15 @@ import pytest
 from prefect_submitit.constants import ExecutionMode
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-slurm",
+        action="store_true",
+        default=False,
+        help="Run tests that require a real SLURM cluster",
+    )
+
+
 @pytest.fixture
 def mock_runner():
     """Create a minimal mock SlurmTaskRunner for testing standalone functions.
