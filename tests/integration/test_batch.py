@@ -6,39 +6,17 @@ import pytest
 from prefect import flow
 from prefect.client.orchestration import get_client
 
-from prefect_submitit import SlurmTaskRunner
 from tests.integration.tasks import conditional_fail, identity
 
 pytestmark = pytest.mark.slurm
 
 
-def _make_batch_runner(slurm_config, units_per_worker):
-    """Create a SlurmTaskRunner configured for batched execution."""
-    extra_kwargs = {}
-    if slurm_config.account:
-        extra_kwargs["slurm_account"] = slurm_config.account
-    if slurm_config.qos:
-        extra_kwargs["slurm_qos"] = slurm_config.qos
-
-    return SlurmTaskRunner(
-        partition=slurm_config.partition,
-        time_limit=slurm_config.time_limit,
-        mem_gb=slurm_config.mem_gb,
-        gpus_per_node=0,
-        poll_interval=2.0,
-        max_poll_time=slurm_config.max_wait + 300,
-        log_folder=str(slurm_config.log_dir / "slurm_logs"),
-        units_per_worker=units_per_worker,
-        **extra_kwargs,
-    )
-
-
 class TestBatchBasic:
     """P1: Basic batch execution."""
 
-    def test_batch_basic(self, slurm_config, slurm_jobs):
+    def test_batch_basic(self, make_slurm_runner, slurm_jobs):
         """10 items, units_per_worker=5 -> 2 SLURM jobs."""
-        runner = _make_batch_runner(slurm_config, units_per_worker=5)
+        runner = make_slurm_runner(units_per_worker=5)
 
         @flow(task_runner=runner)
         def compute():
@@ -50,9 +28,9 @@ class TestBatchBasic:
         results = compute()
         assert results == list(range(10))
 
-    def test_batch_with_remainder(self, slurm_config, slurm_jobs):
+    def test_batch_with_remainder(self, make_slurm_runner, slurm_jobs):
         """7 items, units_per_worker=3 -> batches of [3, 3, 1]."""
-        runner = _make_batch_runner(slurm_config, units_per_worker=3)
+        runner = make_slurm_runner(units_per_worker=3)
 
         @flow(task_runner=runner)
         def compute():
@@ -68,9 +46,9 @@ class TestBatchBasic:
 class TestBatchFailures:
     """P1: Per-item failure isolation in batch."""
 
-    def test_batch_per_item_failure(self, slurm_config, slurm_jobs):
+    def test_batch_per_item_failure(self, make_slurm_runner, slurm_jobs):
         """Item that raises -> error dict; other items succeed."""
-        runner = _make_batch_runner(slurm_config, units_per_worker=5)
+        runner = make_slurm_runner(units_per_worker=5)
 
         @flow(task_runner=runner)
         def compute():
@@ -93,8 +71,8 @@ class TestBatchFailures:
 class TestBatchParameters:
     """P2: Static parameter merging in batch."""
 
-    def test_batch_with_static_params(self, slurm_config, slurm_jobs):
-        runner = _make_batch_runner(slurm_config, units_per_worker=3)
+    def test_batch_with_static_params(self, make_slurm_runner, slurm_jobs):
+        runner = make_slurm_runner(units_per_worker=3)
 
         @flow(task_runner=runner)
         def compute():
@@ -112,12 +90,12 @@ class TestBatchPrefectAPI:
     """P2: Batch task run state in Prefect API."""
 
     def test_batch_task_run_state(
-        self, slurm_config, slurm_jobs, prefect_server
+        self, make_slurm_runner, slurm_jobs, prefect_server
     ):
         if not prefect_server:
             pytest.skip("No Prefect server available")
 
-        runner = _make_batch_runner(slurm_config, units_per_worker=5)
+        runner = make_slurm_runner(units_per_worker=5)
 
         @flow(task_runner=runner)
         def compute():

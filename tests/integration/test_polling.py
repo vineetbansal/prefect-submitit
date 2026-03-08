@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from prefect import flow
 
-from prefect_submitit import SlurmTaskRunner
 from tests.integration.tasks import add, sleep_and_return
 
 pytestmark = pytest.mark.slurm
@@ -25,28 +24,13 @@ class TestPolling:
 
         assert compute() == 42
 
-    def test_max_poll_time_fires(self, slurm_config, slurm_jobs):
+    def test_max_poll_time_fires(self, make_slurm_runner, slurm_jobs):
         """max_poll_time triggers TimeoutError.
 
         Current behavior (Known Issue 1): wait() raises TimeoutError
         rather than returning silently as PrefectFuture protocol specifies.
         """
-        extra_kwargs = {}
-        if slurm_config.account:
-            extra_kwargs["slurm_account"] = slurm_config.account
-        if slurm_config.qos:
-            extra_kwargs["slurm_qos"] = slurm_config.qos
-
-        runner = SlurmTaskRunner(
-            partition=slurm_config.partition,
-            time_limit=slurm_config.time_limit,
-            mem_gb=slurm_config.mem_gb,
-            gpus_per_node=0,
-            poll_interval=2.0,
-            max_poll_time=10,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
-            **extra_kwargs,
-        )
+        runner = make_slurm_runner(max_poll_time=10)
 
         @flow(task_runner=runner)
         def compute():
@@ -57,24 +41,9 @@ class TestPolling:
         with pytest.raises(TimeoutError):
             compute()
 
-    def test_wait_timeout_overrides_max_poll(self, slurm_config, slurm_jobs):
+    def test_wait_timeout_overrides_max_poll(self, make_slurm_runner, slurm_jobs):
         """Explicit timeout param takes precedence over max_poll_time."""
-        extra_kwargs = {}
-        if slurm_config.account:
-            extra_kwargs["slurm_account"] = slurm_config.account
-        if slurm_config.qos:
-            extra_kwargs["slurm_qos"] = slurm_config.qos
-
-        runner = SlurmTaskRunner(
-            partition=slurm_config.partition,
-            time_limit=slurm_config.time_limit,
-            mem_gb=slurm_config.mem_gb,
-            gpus_per_node=0,
-            poll_interval=2.0,
-            max_poll_time=600,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
-            **extra_kwargs,
-        )
+        runner = make_slurm_runner(max_poll_time=600)
 
         @flow(task_runner=runner)
         def compute():
@@ -85,24 +54,9 @@ class TestPolling:
         with pytest.raises(TimeoutError):
             compute()
 
-    def test_wait_timeout_zero(self, slurm_config, slurm_jobs):
+    def test_wait_timeout_zero(self, make_slurm_runner, slurm_jobs):
         """wait(timeout=0) should raise TimeoutError immediately."""
-        extra_kwargs = {}
-        if slurm_config.account:
-            extra_kwargs["slurm_account"] = slurm_config.account
-        if slurm_config.qos:
-            extra_kwargs["slurm_qos"] = slurm_config.qos
-
-        runner = SlurmTaskRunner(
-            partition=slurm_config.partition,
-            time_limit=slurm_config.time_limit,
-            mem_gb=slurm_config.mem_gb,
-            gpus_per_node=0,
-            poll_interval=2.0,
-            max_poll_time=600,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
-            **extra_kwargs,
-        )
+        runner = make_slurm_runner(max_poll_time=600)
 
         @flow(task_runner=runner)
         def compute():

@@ -7,7 +7,6 @@ import subprocess
 import pytest
 from prefect import flow
 
-from prefect_submitit import SlurmTaskRunner
 from prefect_submitit.futures import SlurmJobFailed
 from tests.integration.helpers import wait_for_running
 from tests.integration.tasks import fail_with, sleep_and_return
@@ -32,15 +31,11 @@ class TestExceptionPropagation:
 class TestSlurmFailureModes:
     """P1-P2: SLURM-level failure detection."""
 
-    def test_invalid_partition_fails_cleanly(self, slurm_config, slurm_jobs):
-        runner = SlurmTaskRunner(
+    def test_invalid_partition_fails_cleanly(self, make_slurm_runner, slurm_jobs):
+        runner = make_slurm_runner(
             partition="nonexistent_partition_xyz",
-            time_limit=slurm_config.time_limit,
             mem_gb=1,
-            gpus_per_node=0,
-            poll_interval=2.0,
             max_poll_time=60,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
         )
 
         @flow(task_runner=runner)

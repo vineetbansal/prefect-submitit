@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from prefect import flow
 
-from prefect_submitit import SlurmTaskRunner
 from prefect_submitit.futures import SlurmJobFailed
 from tests.integration.helpers import wait_for_running
 from tests.integration.tasks import add, sleep_and_return
@@ -92,25 +91,9 @@ class TestCancelEdgeCases:
         error_msg = compute()
         assert "CANCELLED" in error_msg
 
-    def test_cancel_batch_mid_execution(self, slurm_config, slurm_jobs):
+    def test_cancel_batch_mid_execution(self, make_slurm_runner, slurm_jobs):
         """Cancel a batch job mid-execution; accept multiple valid outcomes."""
-        extra_kwargs = {}
-        if slurm_config.account:
-            extra_kwargs["slurm_account"] = slurm_config.account
-        if slurm_config.qos:
-            extra_kwargs["slurm_qos"] = slurm_config.qos
-
-        runner = SlurmTaskRunner(
-            partition=slurm_config.partition,
-            time_limit=slurm_config.time_limit,
-            mem_gb=slurm_config.mem_gb,
-            gpus_per_node=0,
-            poll_interval=2.0,
-            max_poll_time=slurm_config.max_wait + 300,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
-            units_per_worker=5,
-            **extra_kwargs,
-        )
+        runner = make_slurm_runner(units_per_worker=5)
 
         @flow(task_runner=runner)
         def compute():

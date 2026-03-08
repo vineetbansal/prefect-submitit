@@ -6,7 +6,6 @@ import pytest
 from prefect import flow
 from prefect.client.orchestration import get_client
 
-from prefect_submitit import SlurmTaskRunner
 from tests.integration.conftest import poll_for_task_runs
 from tests.integration.tasks import add, conditional_fail, identity
 
@@ -46,24 +45,8 @@ class TestMapParameters:
 class TestMapChunking:
     """P1: Job array chunking when exceeding max_array_size."""
 
-    def test_map_exceeding_max_array_size(self, slurm_config, slurm_jobs):
-        extra_kwargs = {}
-        if slurm_config.account:
-            extra_kwargs["slurm_account"] = slurm_config.account
-        if slurm_config.qos:
-            extra_kwargs["slurm_qos"] = slurm_config.qos
-
-        runner = SlurmTaskRunner(
-            partition=slurm_config.partition,
-            time_limit=slurm_config.time_limit,
-            mem_gb=slurm_config.mem_gb,
-            gpus_per_node=0,
-            poll_interval=2.0,
-            max_poll_time=slurm_config.max_wait + 300,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
-            max_array_size=3,
-            **extra_kwargs,
-        )
+    def test_map_exceeding_max_array_size(self, make_slurm_runner, slurm_jobs):
+        runner = make_slurm_runner(max_array_size=3)
 
         @flow(task_runner=runner)
         def compute():
@@ -75,24 +58,8 @@ class TestMapChunking:
         results = compute()
         assert results == [10, 20, 30, 40, 50, 60, 70]
 
-    def test_map_with_parallelism_throttle(self, slurm_config, slurm_jobs):
-        extra_kwargs = {}
-        if slurm_config.account:
-            extra_kwargs["slurm_account"] = slurm_config.account
-        if slurm_config.qos:
-            extra_kwargs["slurm_qos"] = slurm_config.qos
-
-        runner = SlurmTaskRunner(
-            partition=slurm_config.partition,
-            time_limit=slurm_config.time_limit,
-            mem_gb=slurm_config.mem_gb,
-            gpus_per_node=0,
-            poll_interval=2.0,
-            max_poll_time=slurm_config.max_wait + 300,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
-            slurm_array_parallelism=3,
-            **extra_kwargs,
-        )
+    def test_map_with_parallelism_throttle(self, make_slurm_runner, slurm_jobs):
+        runner = make_slurm_runner(slurm_array_parallelism=3)
 
         @flow(task_runner=runner)
         def compute():

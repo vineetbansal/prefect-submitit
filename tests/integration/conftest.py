@@ -196,8 +196,13 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
 
 
 @pytest.fixture
-def slurm_runner(request, slurm_config):
-    """A configured SlurmTaskRunner for testing."""
+def make_slurm_runner(request, slurm_config):
+    """Factory fixture: returns a callable that builds a SlurmTaskRunner.
+
+    Every runner gets the test name as the SLURM job name.  Callers can
+    pass ``**overrides`` to customise any parameter (e.g. max_poll_time,
+    units_per_worker).
+    """
     log_dir = slurm_config.log_dir / "slurm_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -205,23 +210,31 @@ def slurm_runner(request, slurm_config):
     raw_name = request.node.name
     sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", raw_name)[:50]
 
-    extra_kwargs = {}
-    if slurm_config.account:
-        extra_kwargs["slurm_account"] = slurm_config.account
-    if slurm_config.qos:
-        extra_kwargs["slurm_qos"] = slurm_config.qos
+    def _make(**overrides):
+        defaults = dict(
+            partition=slurm_config.partition,
+            time_limit=slurm_config.time_limit,
+            mem_gb=slurm_config.mem_gb,
+            gpus_per_node=0,
+            poll_interval=2.0,
+            max_poll_time=slurm_config.max_wait + 300,
+            log_folder=str(log_dir),
+            slurm_job_name=sanitized,
+        )
+        if slurm_config.account:
+            defaults["slurm_account"] = slurm_config.account
+        if slurm_config.qos:
+            defaults["slurm_qos"] = slurm_config.qos
+        defaults.update(overrides)
+        return SlurmTaskRunner(**defaults)
 
-    return SlurmTaskRunner(
-        partition=slurm_config.partition,
-        time_limit=slurm_config.time_limit,
-        mem_gb=slurm_config.mem_gb,
-        gpus_per_node=0,
-        poll_interval=2.0,
-        max_poll_time=slurm_config.max_wait + 300,
-        log_folder=str(log_dir),
-        slurm_job_name=sanitized,
-        **extra_kwargs,
-    )
+    return _make
+
+
+@pytest.fixture
+def slurm_runner(make_slurm_runner):
+    """A configured SlurmTaskRunner for testing."""
+    return make_slurm_runner()
 
 
 # ---------------------------------------------------------------------------
