@@ -136,13 +136,6 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
     port = find_free_port()
     api_url = f"http://{hostname}:{port}/api"
 
-    subprocess.run(
-        ["pkill", "-f", "prefect server start"],
-        capture_output=True,
-        check=False,
-    )
-    time.sleep(2)
-
     proc = subprocess.Popen(
         ["prefect", "server", "start", "--host", "0.0.0.0", "--port", str(port)],
         stdout=subprocess.DEVNULL,
@@ -156,13 +149,21 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
         proc.wait(timeout=10)
         pytest.skip("Could not start Prefect server")
 
+    # Override both env var (for subprocesses) and Prefect's in-process
+    # settings cache (profile values are cached at import time).
+    from prefect.settings import get_current_settings
+
     old_url = os.environ.get("PREFECT_API_URL")
     os.environ["PREFECT_API_URL"] = api_url
+    settings = get_current_settings()
+    old_settings_url = settings.api.url
+    settings.api.url = api_url
     yield api_url
 
     os.environ.pop("PREFECT_API_URL", None)
     if old_url:
         os.environ["PREFECT_API_URL"] = old_url
+    settings.api.url = old_settings_url
     proc.terminate()
     try:
         proc.wait(timeout=10)

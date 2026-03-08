@@ -241,10 +241,14 @@ class TestSlurmPrefectFuture:
 
     # --- Logs ---
 
-    def test_logs_returns_stdout_stderr(self):
+    def test_logs_returns_stdout_stderr(self, tmp_path):
         job = _mock_job()
-        job.stdout.return_value = "stdout content"
-        job.stderr.return_value = "stderr content"
+        stdout_path = tmp_path / "stdout.txt"
+        stderr_path = tmp_path / "stderr.txt"
+        stdout_path.write_text("stdout content")
+        stderr_path.write_text("stderr content")
+        job.paths.stdout = stdout_path
+        job.paths.stderr = stderr_path
         future = SlurmPrefectFuture(job, uuid4(), 1.0, 60.0)
 
         stdout, stderr = future.logs()
@@ -252,17 +256,17 @@ class TestSlurmPrefectFuture:
         assert stdout == "stdout content"
         assert stderr == "stderr content"
 
-    def test_logs_returns_value_for_none_stdout(self):
-        """logs() may return None or '' when stdout/stderr are None."""
+    def test_logs_returns_empty_for_missing_files(self, tmp_path):
+        """logs() returns empty strings when log files don't exist."""
         job = _mock_job()
-        job.stdout.return_value = None
-        job.stderr.return_value = None
+        job.paths.stdout = tmp_path / "nonexistent_stdout.txt"
+        job.paths.stderr = tmp_path / "nonexistent_stderr.txt"
         future = SlurmPrefectFuture(job, uuid4(), 1.0, 60.0)
 
         stdout, stderr = future.logs()
 
-        assert stdout is None or stdout == ""
-        assert stderr is None or stderr == ""
+        assert stdout == ""
+        assert stderr == ""
 
     # --- Post-loop state checks ---
 
