@@ -167,10 +167,6 @@ for _ in range(15):
 assert len(matching) >= 1
 ```
 
-**Fix C (Optional): Verify websocket endpoint readiness**
-
-Extend `_wait_for_server()` to also check that `ws://<host>:<port>/api/events/in` is accepting connections before tests proceed.
-
 **Confidence:** Certain — error is in every SLURM job log. Same root cause as lesson #2.
 
 ---
