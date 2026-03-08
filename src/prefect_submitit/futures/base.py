@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import time
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import cloudpickle
@@ -95,7 +97,7 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
 
         while not self._job.done():
             elapsed = time.time() - start
-            if effective_timeout and elapsed > effective_timeout:
+            if effective_timeout is not None and elapsed > effective_timeout:
                 slurm_state = self._job.state
                 msg = (
                     f"Job {self.slurm_job_id} did not complete "
@@ -180,4 +182,32 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
             return False
 
     def logs(self) -> tuple[str, str]:
-        return self._job.stdout() or "", self._job.stderr() or ""
+        """Read stdout/stderr logs with NFS cache invalidation."""
+        return (
+            self._read_log_nfs_safe(self._job.paths.stdout),
+            self._read_log_nfs_safe(self._job.paths.stderr),
+        )
+
+    @staticmethod
+    def _read_log_nfs_safe(path: Path) -> str:
+        """Read a log file after invalidating NFS attribute cache."""
+        if not path.exists():
+            try:
+                os.listdir(path.parent)
+            except OSError:
+                pass
+            if not path.exists():
+                return ""
+        try:
+            fd = os.open(path, os.O_RDONLY)
+            try:
+                os.fstat(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            return ""
+        try:
+            with open(path) as f:
+                return f.read()
+        except OSError:
+            return ""

@@ -7,6 +7,7 @@ from prefect import flow
 from prefect.client.orchestration import get_client
 
 from prefect_submitit import SlurmTaskRunner
+from tests.integration.conftest import poll_for_task_runs
 from tests.integration.tasks import add, conditional_fail, identity
 
 pytestmark = pytest.mark.slurm
@@ -151,9 +152,9 @@ class TestMapPrefectAPI:
         compute()
 
         client = get_client(sync_client=True)
-        task_runs = client.read_task_runs()
         for ajid in array_job_ids:
-            matching = [
-                tr for tr in task_runs if tr.name and f"slurm-{ajid}_" in tr.name
-            ]
+            matching = poll_for_task_runs(
+                client,
+                lambda tr, _ajid=ajid: tr.name and f"slurm-{_ajid}_" in tr.name,
+            )
             assert len(matching) >= 1

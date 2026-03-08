@@ -6,6 +6,7 @@ import pytest
 from prefect import flow
 from prefect.client.orchestration import get_client
 
+from tests.integration.conftest import poll_for_task_runs
 from tests.integration.tasks import (
     add,
     async_add,
@@ -76,12 +77,10 @@ class TestPrefectAPIIntegration:
         assert result == 10
 
         client = get_client(sync_client=True)
-        task_runs = client.read_task_runs()
-        matching = [
-            tr
-            for tr in task_runs
-            if str(tr.flow_run_id) == flow_run_id_holder["id"]
-        ]
+        matching = poll_for_task_runs(
+            client,
+            lambda tr: str(tr.flow_run_id) == flow_run_id_holder["id"],
+        )
         assert len(matching) >= 1
         assert any(tr.state.is_completed() for tr in matching)
 
@@ -103,11 +102,11 @@ class TestPrefectAPIIntegration:
         compute()
 
         client = get_client(sync_client=True)
-        task_runs = client.read_task_runs()
         slurm_job_id = job_id_holder["id"]
-        matching = [
-            tr for tr in task_runs if tr.name and f"slurm-{slurm_job_id}" in tr.name
-        ]
+        matching = poll_for_task_runs(
+            client,
+            lambda tr: tr.name and f"slurm-{slurm_job_id}" in tr.name,
+        )
         assert len(matching) >= 1
 
 

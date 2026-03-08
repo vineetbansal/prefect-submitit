@@ -136,6 +136,13 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
     port = find_free_port()
     api_url = f"http://{hostname}:{port}/api"
 
+    subprocess.run(
+        ["pkill", "-f", "prefect server start"],
+        capture_output=True,
+        check=False,
+    )
+    time.sleep(2)
+
     proc = subprocess.Popen(
         ["prefect", "server", "start", "--host", "0.0.0.0", "--port", str(port)],
         stdout=subprocess.DEVNULL,
@@ -210,6 +217,17 @@ def slurm_jobs():
             timeout=10,
             check=False,
         )
+
+
+def poll_for_task_runs(client, filter_fn, retries=15, delay=2):
+    """Poll Prefect API until matching task runs appear."""
+    for _ in range(retries):
+        task_runs = client.read_task_runs()
+        matching = [tr for tr in task_runs if filter_fn(tr)]
+        if matching:
+            return matching
+        time.sleep(delay)
+    return []
 
 
 @pytest.fixture(scope="session", autouse=True)
