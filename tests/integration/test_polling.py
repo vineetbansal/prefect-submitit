@@ -25,7 +25,7 @@ class TestPolling:
 
         assert compute() == 42
 
-    def test_max_poll_time_fires(self, slurm_config, slurm_jobs, tmp_path):
+    def test_max_poll_time_fires(self, slurm_config, slurm_jobs):
         """max_poll_time triggers TimeoutError.
 
         Current behavior (Known Issue 1): wait() raises TimeoutError
@@ -44,7 +44,7 @@ class TestPolling:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=10,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             **extra_kwargs,
         )
 
@@ -57,7 +57,7 @@ class TestPolling:
         with pytest.raises(TimeoutError):
             compute()
 
-    def test_wait_timeout_overrides_max_poll(self, slurm_config, slurm_jobs, tmp_path):
+    def test_wait_timeout_overrides_max_poll(self, slurm_config, slurm_jobs):
         """Explicit timeout param takes precedence over max_poll_time."""
         extra_kwargs = {}
         if slurm_config.account:
@@ -72,7 +72,7 @@ class TestPolling:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=600,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             **extra_kwargs,
         )
 
@@ -89,7 +89,7 @@ class TestPolling:
         reason="Known Issue 2: timeout=0 treated as falsy, waits max_poll_time instead",
         strict=True,
     )
-    def test_wait_timeout_zero(self, slurm_config, slurm_jobs, tmp_path):
+    def test_wait_timeout_zero(self, slurm_config, slurm_jobs):
         """wait(timeout=0) should return immediately but doesn't.
 
         Bug: effective_timeout = timeout or self._max_poll_time
@@ -109,7 +109,7 @@ class TestPolling:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=600,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             **extra_kwargs,
         )
 

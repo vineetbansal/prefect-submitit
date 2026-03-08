@@ -45,7 +45,7 @@ class TestMapParameters:
 class TestMapChunking:
     """P1: Job array chunking when exceeding max_array_size."""
 
-    def test_map_exceeding_max_array_size(self, slurm_config, slurm_jobs, tmp_path):
+    def test_map_exceeding_max_array_size(self, slurm_config, slurm_jobs):
         extra_kwargs = {}
         if slurm_config.account:
             extra_kwargs["slurm_account"] = slurm_config.account
@@ -59,7 +59,7 @@ class TestMapChunking:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=slurm_config.max_wait + 300,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             max_array_size=3,
             **extra_kwargs,
         )
@@ -74,7 +74,7 @@ class TestMapChunking:
         results = compute()
         assert results == [10, 20, 30, 40, 50, 60, 70]
 
-    def test_map_with_parallelism_throttle(self, slurm_config, slurm_jobs, tmp_path):
+    def test_map_with_parallelism_throttle(self, slurm_config, slurm_jobs):
         extra_kwargs = {}
         if slurm_config.account:
             extra_kwargs["slurm_account"] = slurm_config.account
@@ -88,7 +88,7 @@ class TestMapChunking:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=slurm_config.max_wait + 300,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             slurm_array_parallelism=3,
             **extra_kwargs,
         )

@@ -32,7 +32,7 @@ class TestExceptionPropagation:
 class TestSlurmFailureModes:
     """P1-P2: SLURM-level failure detection."""
 
-    def test_timeout_detection(self, slurm_config, slurm_jobs, tmp_path):
+    def test_timeout_detection(self, slurm_config, slurm_jobs):
         """Job exceeding time_limit triggers TIMEOUT state detection.
 
         Uses a 1-minute time limit with a task that sleeps 120s.
@@ -50,7 +50,7 @@ class TestSlurmFailureModes:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=slurm_config.max_wait + 120,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             **extra_kwargs,
         )
 
@@ -73,7 +73,7 @@ class TestSlurmFailureModes:
         with pytest.raises((TypeError, SlurmJobFailed)):
             compute()
 
-    def test_invalid_partition_fails_cleanly(self, slurm_config, slurm_jobs, tmp_path):
+    def test_invalid_partition_fails_cleanly(self, slurm_config, slurm_jobs):
         runner = SlurmTaskRunner(
             partition="nonexistent_partition_xyz",
             time_limit="00:05:00",
@@ -81,7 +81,7 @@ class TestSlurmFailureModes:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=60,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
         )
 
         @flow(task_runner=runner)

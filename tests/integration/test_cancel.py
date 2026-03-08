@@ -92,7 +92,7 @@ class TestCancelEdgeCases:
         error_msg = compute()
         assert "CANCELLED" in error_msg
 
-    def test_cancel_batch_mid_execution(self, slurm_config, slurm_jobs, tmp_path):
+    def test_cancel_batch_mid_execution(self, slurm_config, slurm_jobs):
         """Cancel a batch job mid-execution; accept multiple valid outcomes."""
         extra_kwargs = {}
         if slurm_config.account:
@@ -107,7 +107,7 @@ class TestCancelEdgeCases:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=slurm_config.max_wait + 300,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             units_per_worker=5,
             **extra_kwargs,
         )
@@ -135,7 +135,7 @@ class TestCancelEdgeCases:
         # Either all cancelled, all ok, or mixed — all are valid
         assert len(results) == 5
 
-    def test_cancel_pending_job(self, slurm_config, slurm_jobs, tmp_path):
+    def test_cancel_pending_job(self, slurm_config, slurm_jobs):
         """Cancel a job that hasn't started yet (deferred start)."""
         extra_kwargs = {}
         if slurm_config.account:
@@ -150,7 +150,7 @@ class TestCancelEdgeCases:
             gpus_per_node=0,
             poll_interval=2.0,
             max_poll_time=60,
-            log_folder=str(tmp_path / "slurm_logs"),
+            log_folder=str(slurm_config.log_dir / "slurm_logs"),
             slurm_begin="now+1hour",
             **extra_kwargs,
         )

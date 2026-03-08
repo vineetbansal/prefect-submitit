@@ -142,8 +142,8 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
 
     proc = subprocess.Popen(
         ["prefect", "server", "start", "--host", "0.0.0.0", "--port", str(port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
     try:
