@@ -15,12 +15,10 @@ def wait_for_running(future, timeout=300, poll=2.0, *, skip_on_timeout=True):
     rather than failing — a scheduling timeout is a cluster issue, not a
     code bug.
     """
-    from prefect.states import Running
-
     start = time.time()
     while time.time() - start < timeout:
         state = future.state
-        if isinstance(state, Running):
+        if state.is_running():
             return
         time.sleep(poll)
     msg = f"Job {future.slurm_job_id} did not reach RUNNING within {timeout}s"

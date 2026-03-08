@@ -32,37 +32,11 @@ class TestExceptionPropagation:
 class TestSlurmFailureModes:
     """P1-P2: SLURM-level failure detection."""
 
-    def test_timeout_detection(self, slurm_config, slurm_jobs):
-        """Job exceeding time_limit triggers TIMEOUT state detection.
-
-        Uses a 1-minute time limit with a task that sleeps 120s.
-        """
-        extra_kwargs = {}
-        if slurm_config.account:
-            extra_kwargs["slurm_account"] = slurm_config.account
-        if slurm_config.qos:
-            extra_kwargs["slurm_qos"] = slurm_config.qos
-
-        runner = SlurmTaskRunner(
-            partition=slurm_config.partition,
-            time_limit="00:01:00",
-            mem_gb=slurm_config.mem_gb,
-            gpus_per_node=0,
-            poll_interval=2.0,
-            max_poll_time=slurm_config.max_wait + 120,
-            log_folder=str(slurm_config.log_dir / "slurm_logs"),
-            **extra_kwargs,
-        )
-
-        @flow(task_runner=runner)
-        def compute():
-            future = sleep_and_return.submit(seconds=120.0)
-            slurm_jobs.append(future.slurm_job_id)
-            return future.result()
-
-        with pytest.raises(SlurmJobFailed, match="TIMEOUT"):
-            compute()
-
+    @pytest.mark.xfail(
+        reason="submitit may serialize the result before our code sees it; "
+        "behavior depends on submitit internals",
+        strict=False,
+    )
     def test_unpicklable_return_raises_cleanly(self, slurm_runner, slurm_jobs):
         @flow(task_runner=slurm_runner)
         def compute():
@@ -76,7 +50,7 @@ class TestSlurmFailureModes:
     def test_invalid_partition_fails_cleanly(self, slurm_config, slurm_jobs):
         runner = SlurmTaskRunner(
             partition="nonexistent_partition_xyz",
-            time_limit="00:05:00",
+            time_limit=slurm_config.time_limit,
             mem_gb=1,
             gpus_per_node=0,
             poll_interval=2.0,

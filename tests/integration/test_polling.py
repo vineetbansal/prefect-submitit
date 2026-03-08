@@ -39,7 +39,7 @@ class TestPolling:
 
         runner = SlurmTaskRunner(
             partition=slurm_config.partition,
-            time_limit="00:05:00",
+            time_limit=slurm_config.time_limit,
             mem_gb=slurm_config.mem_gb,
             gpus_per_node=0,
             poll_interval=2.0,
@@ -67,7 +67,7 @@ class TestPolling:
 
         runner = SlurmTaskRunner(
             partition=slurm_config.partition,
-            time_limit="00:05:00",
+            time_limit=slurm_config.time_limit,
             mem_gb=slurm_config.mem_gb,
             gpus_per_node=0,
             poll_interval=2.0,
@@ -104,7 +104,7 @@ class TestPolling:
 
         runner = SlurmTaskRunner(
             partition=slurm_config.partition,
-            time_limit="00:05:00",
+            time_limit=slurm_config.time_limit,
             mem_gb=slurm_config.mem_gb,
             gpus_per_node=0,
             poll_interval=2.0,

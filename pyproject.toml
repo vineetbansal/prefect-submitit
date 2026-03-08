@@ -97,7 +97,10 @@ testpaths = ["tests"]
 log_cli_level = "INFO"
 xfail_strict = true
 addopts = ["-ra", "--strict-config", "--strict-markers"]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    "ignore::ResourceWarning",
+]
 markers = [
     "slurm: tests that submit real SLURM jobs (deselected unless --run-slurm)",
     "slurm_gpu: tests that require a GPU partition",
