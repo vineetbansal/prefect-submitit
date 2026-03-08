@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import inspect
 import os
 import re
 import socket
@@ -164,26 +163,18 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
 
     # Drain Prefect's background workers before stopping the server
     # to avoid "Error logging to API" from in-flight requests.
+    # Called in sync context (no event loop) so drain_all() returns
+    # concurrent.futures.wait() results directly.
     try:
-        from prefect._internal.concurrency.api import run_coro_as_sync
-        from prefect.events.worker import EventsWorker
         from prefect.logging.handlers import APILogWorker
 
-        async def _drain():
-            try:
-                result = APILogWorker.drain_all()
-                if inspect.isawaitable(result):
-                    await result
-            except Exception:
-                pass
-            try:
-                result = EventsWorker.drain_all()
-                if inspect.isawaitable(result):
-                    await result
-            except Exception:
-                pass
+        APILogWorker.drain_all(timeout=5)
+    except Exception:
+        pass
+    try:
+        from prefect.events.worker import EventsWorker
 
-        run_coro_as_sync(_drain())
+        EventsWorker.drain_all(timeout=5)
     except Exception:
         pass
 
