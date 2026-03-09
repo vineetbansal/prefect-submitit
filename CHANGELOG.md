@@ -9,7 +9,25 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Unit test suite for executors and array futures.
+- `prefect-server` CLI for managing a local PostgreSQL-backed Prefect server on
+  shared HPC nodes (`start`, `stop`, `status`, `init-db`).
+- Python API for server management (`prefect_submitit.server.start/stop/status`).
+- UID-based port allocation (4200–4999) to avoid conflicts on multi-user nodes.
+- Discovery file (`~/.prefect-submitit/server.json`) for cross-node worker
+  resolution.
+- Five example notebooks covering single tasks, job arrays, batched execution,
+  error handling, and local development mode.
+- `make_slurm_runner` factory fixture for integration tests with SLURM job naming.
+- Unit test suite for executors, array futures, and server module.
+
+### Fixed
+
+- NFS-safe log reads with cache invalidation and retry in
+  `SlurmPrefectFuture.logs()`.
+- `wait(timeout=0)` no longer falls through to the default max poll time.
+- Integration tests use shared filesystem for SLURM logs instead of `tmp_path`.
+- `require_binary()` falls back to interpreter's bin directory for Jupyter
+  kernel environments where PATH is incomplete.
 
 ### Changed
 
@@ -17,6 +35,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Hardened CI pipeline.
 - Updated pyproject.toml dependencies and linting configurations.
 - Linked PyPI package to conda-forge.
+- Drain Prefect background workers before test server teardown.
+- Session-end `scancel` scoped to test-submitted jobs only.
 
 ## [0.1.3] - 2026-02-24
 
