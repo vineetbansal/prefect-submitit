@@ -100,27 +100,21 @@ pixi run -e dev test
 
 ### Prefect Server
 
-The repo includes scripts to run a local Prefect server backed by PostgreSQL
-(handles SLURM concurrency better than SQLite). The server uses a UID-based
-port to avoid conflicts on shared nodes.
+The repo includes a `prefect-server` CLI to run a local Prefect server backed
+by PostgreSQL (handles SLURM concurrency better than SQLite). The server uses a
+UID-based port to avoid conflicts on shared nodes.
 
 ```bash
 pixi run prefect-start   # Start in background (PostgreSQL + Prefect)
 pixi run prefect-stop    # Stop the server
 ```
 
-The start script automatically:
+The CLI automatically:
 - Initializes PostgreSQL on first run (stored in `.prefect-postgres/`)
 - Picks a UID-based port (range 4200-4999) to avoid conflicts
 - Uses the node's FQDN so SLURM workers on compute nodes can reach it
 - Writes a discovery file to `~/.prefect-submitit/prefect/server.json`
 - Tunes connection pool sizes for high-concurrency SLURM workloads
-
-Use `--sqlite` if you don't need PostgreSQL:
-
-```bash
-./scripts/prefect/start_prefect_server.sh --sqlite
-```
 
 ### IDE Setup (VSCode)
 

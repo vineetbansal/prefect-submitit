@@ -40,4 +40,4 @@ CLAUDE.local.md
 
 # Prefect server
 .prefect-postgres/
-scripts/prefect/prefect-logs/
+prefect-logs/

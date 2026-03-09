@@ -84,15 +84,16 @@ src/prefect_submitit/          # Prefect TaskRunner for SLURM via submitit
 ├── executors.py               # Submitit executor wrappers
 ├── constants.py               # Default values and env var names
 ├── utils.py                   # Utility functions
-└── futures/                   # Prefect future implementations
-    ├── base.py                # Base future class
-    ├── array.py               # Job array futures
-    └── batched.py             # Batched execution futures
-
-scripts/prefect/               # Prefect server management
-├── init_postgres.sh           # One-time PostgreSQL setup
-├── start_prefect_server.sh    # Start server (PostgreSQL + Prefect)
-└── stop_prefect_server.sh     # Stop server
+├── futures/                   # Prefect future implementations
+│   ├── base.py                # Base future class
+│   ├── array.py               # Job array futures
+│   └── batched.py             # Batched execution futures
+└── server/                    # Prefect server lifecycle (CLI)
+    ├── cli.py                 # `prefect-server` entry point
+    ├── config.py              # Server configuration
+    ├── discovery.py           # Server discovery file management
+    ├── postgres.py            # PostgreSQL init and management
+    └── prefect_proc.py        # Prefect server process control
 
 examples/                      # Demo notebooks
 tests/                         # Test suite
