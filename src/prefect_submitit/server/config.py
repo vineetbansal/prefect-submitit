@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import socket
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,7 +82,11 @@ def make_config(
 
 
 def require_binary(name: str) -> str:
-    """Find a binary on PATH or raise with a clear message.
+    """Find a binary on PATH or in the current interpreter's environment.
+
+    Falls back to the directory containing ``sys.executable`` so that
+    binaries installed alongside the Python interpreter (e.g. in a pixi
+    or conda environment) are found even when PATH is not set.
 
     Args:
         name: Binary name to locate.
@@ -90,10 +95,15 @@ def require_binary(name: str) -> str:
         Absolute path to the binary.
 
     Raises:
-        FileNotFoundError: If the binary is not found on PATH.
+        FileNotFoundError: If the binary is not found.
     """
     path = shutil.which(name)
     if path is None:
+        # Check the interpreter's own bin directory (handles Jupyter
+        # kernels whose PATH doesn't include the env's bin dir).
+        candidate = Path(sys.executable).resolve().parent / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
         msg = (
             f"Required binary '{name}' not found on PATH. "
             f"Install it or ensure your environment is activated."
