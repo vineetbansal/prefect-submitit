@@ -5,7 +5,8 @@ Tests SlurmJobFailed exception and SlurmPrefectFuture base class.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from subprocess import CalledProcessError
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import cloudpickle
@@ -240,10 +241,14 @@ class TestSlurmPrefectFuture:
 
     # --- Logs ---
 
-    def test_logs_returns_stdout_stderr(self):
+    def test_logs_returns_stdout_stderr(self, tmp_path):
         job = _mock_job()
-        job.stdout.return_value = "stdout content"
-        job.stderr.return_value = "stderr content"
+        stdout_path = tmp_path / "stdout.txt"
+        stderr_path = tmp_path / "stderr.txt"
+        stdout_path.write_text("stdout content")
+        stderr_path.write_text("stderr content")
+        job.paths.stdout = stdout_path
+        job.paths.stderr = stderr_path
         future = SlurmPrefectFuture(job, uuid4(), 1.0, 60.0)
 
         stdout, stderr = future.logs()
@@ -251,14 +256,100 @@ class TestSlurmPrefectFuture:
         assert stdout == "stdout content"
         assert stderr == "stderr content"
 
-    def test_logs_returns_value_for_none_stdout(self):
-        """logs() may return None or '' when stdout/stderr are None."""
+    def test_logs_returns_empty_for_missing_files(self, tmp_path):
+        """logs() returns empty strings when log files don't exist."""
         job = _mock_job()
-        job.stdout.return_value = None
-        job.stderr.return_value = None
+        job.paths.stdout = tmp_path / "nonexistent_stdout.txt"
+        job.paths.stderr = tmp_path / "nonexistent_stderr.txt"
         future = SlurmPrefectFuture(job, uuid4(), 1.0, 60.0)
 
-        stdout, stderr = future.logs()
+        stdout, stderr = future.logs(_retries=1)
 
-        assert stdout is None or stdout == ""
-        assert stderr is None or stderr == ""
+        assert stdout == ""
+        assert stderr == ""
+
+    # --- Post-loop state checks ---
+
+    @pytest.mark.parametrize(
+        "slurm_state",
+        ["CANCELLED", "FAILED", "TIMEOUT", "NODE_FAIL", "OUT_OF_MEMORY"],
+    )
+    def test_wait_post_loop_terminal_failure(self, slurm_state):
+        """Job.done() returns True but state is a terminal failure."""
+        job = _mock_job(state=slurm_state)
+        job.done.return_value = True
+        job.stderr.return_value = "some error"
+        future = SlurmPrefectFuture(job, uuid4(), 0.01, 60.0)
+
+        with pytest.raises(SlurmJobFailed, match=slurm_state):
+            future.wait()
+
+    def test_wait_post_loop_completed(self):
+        """Job.done() returns True and state is COMPLETED — no exception."""
+        job = _mock_job(state="COMPLETED")
+        job.done.return_value = True
+        future = SlurmPrefectFuture(job, uuid4(), 0.01, 60.0)
+
+        future.wait()
+
+        assert future.is_done is True
+
+    # --- Cancel ---
+
+    @patch("prefect_submitit.futures.base.subprocess.run")
+    def test_cancel_success(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        future = SlurmPrefectFuture(_mock_job("99999"), uuid4(), 1.0, 60.0)
+
+        assert future.cancel() is True
+        mock_run.assert_called_once_with(
+            ["scancel", "99999"], check=True, capture_output=True
+        )
+
+    @patch("prefect_submitit.futures.base.subprocess.run")
+    def test_cancel_failure(self, mock_run):
+        mock_run.side_effect = CalledProcessError(1, "scancel")
+        future = SlurmPrefectFuture(_mock_job("99999"), uuid4(), 1.0, 60.0)
+
+        assert future.cancel() is False
+
+    # --- CANCELLED by <uid> variant ---
+
+    def test_cancelled_by_uid_state(self):
+        job = _mock_job(state="CANCELLED by 1000")
+        future = SlurmPrefectFuture(job, uuid4(), 1.0, 60.0)
+
+        assert future.state.is_failed()
+
+    def test_cancelled_by_uid_wait(self):
+        job = _mock_job(state="CANCELLED by 1000")
+        job.done.return_value = False
+        job.stderr.return_value = "cancelled"
+        future = SlurmPrefectFuture(job, uuid4(), 0.01, 60.0)
+
+        with pytest.raises(SlurmJobFailed, match="CANCELLED by 1000"):
+            future.wait()
+
+    # --- Plus suffix handling ---
+
+    def test_timeout_plus_suffix(self):
+        job = _mock_job(state="TIMEOUT+")
+        future = SlurmPrefectFuture(job, uuid4(), 1.0, 60.0)
+
+        assert future.state.is_failed()
+
+    def test_cancelled_plus_suffix(self):
+        job = _mock_job(state="CANCELLED+")
+        future = SlurmPrefectFuture(job, uuid4(), 1.0, 60.0)
+
+        assert future.state.is_failed()
+
+    # --- Timeout message includes state ---
+
+    def test_timeout_message_includes_state(self):
+        job = _mock_job(state="RUNNING")
+        job.done.return_value = False
+        future = SlurmPrefectFuture(job, uuid4(), 0.01, 0.05)
+
+        with pytest.raises(TimeoutError, match="last observed state:"):
+            future.wait(timeout=0.02)

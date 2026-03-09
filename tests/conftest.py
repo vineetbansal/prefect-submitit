@@ -9,6 +9,15 @@ import pytest
 from prefect_submitit.constants import ExecutionMode
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-slurm",
+        action="store_true",
+        default=False,
+        help="Run tests that require a real SLURM cluster",
+    )
+
+
 @pytest.fixture
 def mock_runner():
     """Create a minimal mock SlurmTaskRunner for testing standalone functions.
@@ -21,7 +30,7 @@ def mock_runner():
     runner._cached_max_array_size = None
     runner.execution_mode = ExecutionMode.SLURM
     runner.logger = MagicMock()
-    runner.poll_interval = 30.0
+    runner.poll_interval = 5.0
     runner.max_poll_time = None
     runner.time_limit = "01:00:00"
     runner._parse_time_to_minutes.return_value = 60
