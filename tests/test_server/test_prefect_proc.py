@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import subprocess
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from prefect_submitit.server.config import ServerConfig
-from prefect_submitit.server.prefect_proc import _build_env, _kill_pid
+from prefect_submitit.server.prefect_proc import (
+    _build_env,
+    _find_server_pids,
+    _kill_pid,
+    start,
+    status,
+    stop,
+)
+
+MODULE = "prefect_submitit.server.prefect_proc"
 
 
 @pytest.fixture
@@ -46,17 +56,192 @@ class TestBuildEnv:
 
 class TestKillPid:
     def test_nonexistent_pid(self):
-        # Should not raise for a PID that doesn't exist
         _kill_pid(999999999, timeout=0.1)
 
     def test_graceful_kill(self):
         with (
-            patch("prefect_submitit.server.prefect_proc.os.kill") as mock_kill,
+            patch(f"{MODULE}.os.kill") as mock_kill,
         ):
-            # First call (SIGTERM) succeeds, second call (signal 0 check) raises
             mock_kill.side_effect = [None, ProcessLookupError]
             _kill_pid(12345, timeout=1.0)
 
             import signal
 
             mock_kill.assert_any_call(12345, signal.SIGTERM)
+
+
+class TestFindServerPids:
+    def test_returns_pids_from_pgrep(self):
+        result = MagicMock(returncode=0, stdout="100\n200\n")
+        with patch(f"{MODULE}.subprocess.run", return_value=result):
+            assert _find_server_pids() == [100, 200]
+
+    def test_returns_empty_when_no_match(self):
+        result = MagicMock(returncode=1, stdout="")
+        with patch(f"{MODULE}.subprocess.run", return_value=result):
+            assert _find_server_pids() == []
+
+    def test_returns_empty_when_pgrep_not_found(self):
+        with patch(f"{MODULE}.subprocess.run", side_effect=FileNotFoundError):
+            assert _find_server_pids() == []
+
+    def test_scopes_to_current_user(self):
+        result = MagicMock(returncode=1, stdout="")
+        with (
+            patch(f"{MODULE}.subprocess.run", return_value=result) as mock_run,
+            patch(f"{MODULE}.os.getuid", return_value=1234),
+        ):
+            _find_server_pids()
+            cmd = mock_run.call_args[0][0]
+            assert "-u" in cmd
+            assert "1234" in cmd
+
+
+class TestStart:
+    def test_background_sqlite_starts_popen_and_writes_discovery(self, tmp_config):
+        mock_proc = MagicMock(pid=42)
+        with (
+            patch(f"{MODULE}.require_binary", return_value="/usr/bin/prefect"),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc) as mock_popen,
+            patch(f"{MODULE}.discovery.write_discovery") as mock_write,
+            patch(f"{MODULE}.discovery.wait_for_healthy"),
+        ):
+            pid = start(tmp_config, background=True, sqlite=True)
+
+            assert pid == 42
+            mock_popen.assert_called_once()
+            mock_write.assert_called_once_with(tmp_config, 42, "sqlite")
+
+    def test_background_postgres_starts_pg_first(self, tmp_config):
+        mock_proc = MagicMock(pid=99)
+        with (
+            patch(f"{MODULE}.require_binary", return_value="/usr/bin/prefect"),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc),
+            patch(f"{MODULE}.postgres.start") as mock_pg_start,
+            patch(f"{MODULE}.discovery.write_discovery"),
+            patch(f"{MODULE}.discovery.wait_for_healthy"),
+        ):
+            start(tmp_config, background=True, sqlite=False)
+            mock_pg_start.assert_called_once_with(tmp_config)
+
+    def test_background_sqlite_skips_postgres(self, tmp_config):
+        mock_proc = MagicMock(pid=99)
+        with (
+            patch(f"{MODULE}.require_binary", return_value="/usr/bin/prefect"),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc),
+            patch(f"{MODULE}.postgres.start") as mock_pg_start,
+            patch(f"{MODULE}.discovery.write_discovery"),
+            patch(f"{MODULE}.discovery.wait_for_healthy"),
+        ):
+            start(tmp_config, background=True, sqlite=True)
+            mock_pg_start.assert_not_called()
+
+    def test_background_creates_log_dir(self, tmp_config):
+        mock_proc = MagicMock(pid=1)
+        with (
+            patch(f"{MODULE}.require_binary", return_value="/usr/bin/prefect"),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc),
+            patch(f"{MODULE}.discovery.write_discovery"),
+            patch(f"{MODULE}.discovery.wait_for_healthy"),
+        ):
+            start(tmp_config, background=True, sqlite=True)
+            assert tmp_config.log_dir.is_dir()
+
+    def test_raises_when_prefect_binary_missing(self, tmp_config):
+        with patch(f"{MODULE}.require_binary", side_effect=FileNotFoundError("nope")):
+            with pytest.raises(FileNotFoundError, match="nope"):
+                start(tmp_config, background=True, sqlite=True)
+
+    def test_foreground_waits_and_cleans_up(self, tmp_config):
+        mock_proc = MagicMock(pid=55)
+        mock_proc.wait.return_value = 0
+        with (
+            patch(f"{MODULE}.require_binary", return_value="/usr/bin/prefect"),
+            patch(f"{MODULE}.subprocess.Popen", return_value=mock_proc),
+            patch(f"{MODULE}.discovery.write_discovery") as mock_write,
+            patch(f"{MODULE}.discovery.remove_discovery") as mock_remove,
+            patch(f"{MODULE}.postgres.stop") as mock_pg_stop,
+            patch(f"{MODULE}.signal.signal"),
+        ):
+            pid = start(tmp_config, background=False, sqlite=True)
+
+            assert pid == 55
+            mock_proc.wait.assert_called_once()
+            mock_write.assert_called_once()
+            mock_remove.assert_called_once_with(tmp_config)
+            mock_pg_stop.assert_called_once_with(tmp_config)
+
+
+class TestStop:
+    def test_kills_found_pids_and_cleans_up(self, tmp_config):
+        with (
+            patch(f"{MODULE}._find_server_pids", return_value=[100, 200]),
+            patch(f"{MODULE}._kill_pid") as mock_kill,
+            patch(f"{MODULE}.discovery.remove_discovery") as mock_remove,
+            patch(f"{MODULE}.postgres.stop") as mock_pg_stop,
+        ):
+            stop(tmp_config)
+
+            assert mock_kill.call_count == 2
+            mock_kill.assert_any_call(100, timeout=5.0)
+            mock_kill.assert_any_call(200, timeout=5.0)
+            mock_remove.assert_called_once_with(tmp_config)
+            mock_pg_stop.assert_called_once_with(tmp_config, force=False)
+
+    def test_force_uses_shorter_timeout(self, tmp_config):
+        with (
+            patch(f"{MODULE}._find_server_pids", return_value=[100]),
+            patch(f"{MODULE}._kill_pid") as mock_kill,
+            patch(f"{MODULE}.discovery.remove_discovery"),
+            patch(f"{MODULE}.postgres.stop") as mock_pg_stop,
+        ):
+            stop(tmp_config, force=True)
+
+            mock_kill.assert_called_once_with(100, timeout=2.0)
+            mock_pg_stop.assert_called_once_with(tmp_config, force=True)
+
+    def test_no_pids_still_cleans_up(self, tmp_config):
+        with (
+            patch(f"{MODULE}._find_server_pids", return_value=[]),
+            patch(f"{MODULE}._kill_pid") as mock_kill,
+            patch(f"{MODULE}.discovery.remove_discovery") as mock_remove,
+            patch(f"{MODULE}.postgres.stop") as mock_pg_stop,
+        ):
+            stop(tmp_config)
+
+            mock_kill.assert_not_called()
+            mock_remove.assert_called_once()
+            mock_pg_stop.assert_called_once()
+
+
+class TestStatus:
+    def test_returns_none_when_no_discovery(self, tmp_config):
+        with patch(f"{MODULE}.discovery.read_discovery", return_value=None):
+            assert status(tmp_config) is None
+
+    def test_returns_info_with_healthy_check(self, tmp_config):
+        info = {"url": "http://test.local:4242/api", "pid": 42}
+        with (
+            patch(f"{MODULE}.discovery.read_discovery", return_value=info),
+            patch(f"{MODULE}.discovery.health_check", return_value=True) as mock_hc,
+        ):
+            result = status(tmp_config)
+
+            assert result["healthy"] is True
+            assert result["pid"] == 42
+            mock_hc.assert_called_once_with("http://test.local:4242/api")
+
+    def test_returns_unhealthy_when_check_fails(self, tmp_config):
+        info = {"url": "http://test.local:4242/api", "pid": 42}
+        with (
+            patch(f"{MODULE}.discovery.read_discovery", return_value=info),
+            patch(f"{MODULE}.discovery.health_check", return_value=False),
+        ):
+            result = status(tmp_config)
+            assert result["healthy"] is False
+
+    def test_returns_unhealthy_when_url_empty(self, tmp_config):
+        info = {"url": "", "pid": 42}
+        with patch(f"{MODULE}.discovery.read_discovery", return_value=info):
+            result = status(tmp_config)
+            assert result["healthy"] is False
