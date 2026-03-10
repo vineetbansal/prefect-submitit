@@ -37,7 +37,7 @@ class TestSlurmTaskRunnerInit:
         assert runner.mem_gb == 4
         assert runner.gpus_per_node == 0
         assert runner.slurm_array_parallelism == 1000
-        assert runner.poll_interval == 30.0
+        assert runner.poll_interval == 5.0
         assert runner.log_folder == "slurm_logs"
         assert runner.execution_mode == ExecutionMode.SLURM
         assert runner.max_array_size is None
@@ -531,7 +531,7 @@ class TestBackend:
 
     def test_poll_interval_slurm_default(self):
         runner = SlurmTaskRunner(execution_mode="slurm")
-        assert runner.poll_interval == 30.0
+        assert runner.poll_interval == 5.0
 
     def test_poll_interval_explicit_override(self):
         runner = SlurmTaskRunner(execution_mode="local", poll_interval=5.0)

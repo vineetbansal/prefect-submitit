@@ -68,7 +68,7 @@ class TestBuildArrayCallable:
     """Tests for build_array_callable."""
 
     @patch("prefect_submitit.submission.cloudpickle_wrapped_call")
-    @patch("prefect.utilities.engine.resolve_inputs_sync")
+    @patch("prefect_submitit.submission.resolve_inputs_sync")
     def test_returns_callable(self, mock_resolve, mock_cloudpickle):
         mock_resolve.side_effect = lambda x, **kwargs: x
         expected = MagicMock()
@@ -89,7 +89,7 @@ class TestBuildArrayCallable:
         mock_cloudpickle.assert_called_once()
 
     @patch("prefect_submitit.submission.cloudpickle_wrapped_call")
-    @patch("prefect.utilities.engine.resolve_inputs_sync")
+    @patch("prefect_submitit.submission.resolve_inputs_sync")
     def test_selects_correct_index(self, mock_resolve, mock_cloudpickle):
         mock_resolve.side_effect = lambda x, **kwargs: x
         mock_cloudpickle.return_value = MagicMock()
@@ -110,7 +110,7 @@ class TestBuildArrayCallable:
         assert resolved_params["z"] == 99
 
     @patch("prefect_submitit.submission.cloudpickle_wrapped_call")
-    @patch("prefect.utilities.engine.resolve_inputs_sync")
+    @patch("prefect_submitit.submission.resolve_inputs_sync")
     def test_passes_return_type_state(self, mock_resolve, mock_cloudpickle):
         mock_resolve.side_effect = lambda x, **kwargs: x
         mock_cloudpickle.return_value = MagicMock()
@@ -134,7 +134,7 @@ class TestBuildBatchCallable:
     """Tests for build_batch_callable."""
 
     @patch("prefect_submitit.submission.cloudpickle_wrapped_call")
-    @patch("prefect.utilities.engine.resolve_inputs_sync")
+    @patch("prefect_submitit.submission.resolve_inputs_sync")
     def test_returns_callable(self, mock_resolve, mock_cloudpickle):
         mock_resolve.side_effect = lambda x, **kwargs: x
         expected = MagicMock()
@@ -153,7 +153,7 @@ class TestBuildBatchCallable:
         assert result is expected
 
     @patch("prefect_submitit.submission.cloudpickle_wrapped_call")
-    @patch("prefect.utilities.engine.resolve_inputs_sync")
+    @patch("prefect_submitit.submission.resolve_inputs_sync")
     def test_includes_batch_metadata(self, mock_resolve, mock_cloudpickle):
         mock_resolve.side_effect = lambda x, **kwargs: x
         mock_cloudpickle.return_value = MagicMock()

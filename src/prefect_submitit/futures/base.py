@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 import time
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import cloudpickle
@@ -65,37 +68,54 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
     @property
     def state(self) -> State:
         slurm_state = self._job.state
-        if slurm_state == "COMPLETED":
+        normalized = slurm_state.rstrip("+")
+        if normalized == "COMPLETED":
             return Completed()
-        if slurm_state in self.TERMINAL_FAILURE_STATES:
+        if self._is_terminal_failure(slurm_state):
             return Failed(message=f"SLURM: {slurm_state}")
-        if slurm_state == "RUNNING":
+        if normalized == "RUNNING":
             return Running()
         return Pending()
 
+    def _is_terminal_failure(self, slurm_state: str) -> bool:
+        normalized = slurm_state.rstrip("+")
+        return normalized in self.TERMINAL_FAILURE_STATES or normalized.startswith(
+            "CANCELLED"
+        )
+
+    def _raise_job_failed(self, slurm_state: str) -> None:
+        try:
+            stderr = self._job.stderr()
+        except Exception:
+            stderr = "(stderr unavailable)"
+        msg = f"Job {self.slurm_job_id}: {slurm_state}\nstderr:\n{stderr}"
+        raise SlurmJobFailed(msg)
+
     def wait(self, timeout: float | None = None) -> None:
-        effective_timeout = timeout or self._max_poll_time
+        effective_timeout = timeout if timeout is not None else self._max_poll_time
         start = time.time()
 
         while not self._job.done():
             elapsed = time.time() - start
-            if effective_timeout and elapsed > effective_timeout:
+            if effective_timeout is not None and elapsed > effective_timeout:
+                slurm_state = self._job.state
                 msg = (
                     f"Job {self.slurm_job_id} did not complete "
-                    f"within {effective_timeout:.0f}s"
+                    f"within {effective_timeout:.0f}s "
+                    f"(last observed state: {slurm_state})"
                 )
                 raise TimeoutError(msg)
 
             slurm_state = self._job.state
-            if slurm_state in self.TERMINAL_FAILURE_STATES:
-                try:
-                    stderr = self._job.stderr()
-                except Exception:
-                    stderr = "(stderr unavailable)"
-                msg = f"Job {self.slurm_job_id}: {slurm_state}\nstderr:\n{stderr}"
-                raise SlurmJobFailed(msg)
+            if self._is_terminal_failure(slurm_state):
+                self._raise_job_failed(slurm_state)
 
             time.sleep(self._poll_interval)
+
+        # Post-loop check: job.done() returned True but may have failed
+        slurm_state = self._job.state
+        if self._is_terminal_failure(slurm_state):
+            self._raise_job_failed(slurm_state)
 
         self._done = True
         self._fire_callbacks()
@@ -152,5 +172,50 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
                     self.slurm_job_id,
                 )
 
-    def logs(self) -> tuple[str, str]:
-        return self._job.stdout() or "", self._job.stderr() or ""
+    def cancel(self) -> bool:
+        try:
+            subprocess.run(
+                ["scancel", self.slurm_job_id], check=True, capture_output=True
+            )
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def logs(self, _retries: int = 5, _delay: float = 1.0) -> tuple[str, str]:
+        """Read stdout/stderr logs with NFS cache invalidation.
+
+        Retries briefly when the stdout file is empty, since ``srun`` may
+        not have flushed its output buffer by the time the result pickle
+        is available.
+        """
+        for attempt in range(_retries):
+            stdout = self._read_log_nfs_safe(self._job.paths.stdout)
+            if stdout or attempt == _retries - 1:
+                break
+            time.sleep(_delay)
+        stderr = self._read_log_nfs_safe(self._job.paths.stderr)
+        return stdout, stderr
+
+    @staticmethod
+    def _read_log_nfs_safe(path: Path) -> str:
+        """Read a log file after invalidating NFS attribute cache."""
+        if not path.exists():
+            try:
+                os.listdir(path.parent)
+            except OSError:
+                pass
+            if not path.exists():
+                return ""
+        try:
+            fd = os.open(path, os.O_RDONLY)
+            try:
+                os.fstat(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            return ""
+        try:
+            with open(path) as f:
+                return f.read()
+        except OSError:
+            return ""
