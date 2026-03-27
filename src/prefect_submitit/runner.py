@@ -152,7 +152,7 @@ class SlurmTaskRunner(TaskRunner):
                         self.gpus_per_node,
                         self.slurm_kwargs["slurm_gres"],
                     )
-            else:
+            elif self.gpus_per_node > 0:
                 params["gpus_per_node"] = self.gpus_per_node
 
             params.update(self.slurm_kwargs)
