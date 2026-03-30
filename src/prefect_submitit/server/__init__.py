@@ -35,7 +35,7 @@ def start(
         background: If True, daemonize the server process. Defaults to True.
         sqlite: If True, use SQLite backend instead of PostgreSQL.
         port: Prefect server port. Defaults to UID-based port.
-        pg_port: PostgreSQL port. Defaults to 5433.
+        pg_port: PostgreSQL port. Defaults to UID-based port.
 
     Returns:
         PID of the server process.

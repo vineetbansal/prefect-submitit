@@ -11,6 +11,11 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- UID-based PostgreSQL port allocation with parity stride: Prefect ports are
+  always even (4200-5798), PostgreSQL ports always odd (5433-7031), eliminating
+  inter-service port collisions on shared HPC nodes.
+- Address-in-use detection for Prefect server startup: when the port is occupied,
+  the error message now includes recovery steps instead of a raw subprocess error.
 - PostgreSQL version mismatch detection: compares data directory version against
   the installed binary and raises a clear error with remediation steps before
   attempting to start.

@@ -151,6 +151,7 @@ def _wait_for_healthy_or_death(
     proc: subprocess.Popen,
     url: str,
     log_file: Path,
+    port: int,
     timeout: float = 30,
     poll: float = 1.0,
 ) -> None:
@@ -160,6 +161,7 @@ def _wait_for_healthy_or_death(
         proc: The server Popen object.
         url: Base API URL for health checks.
         log_file: Path to the server log file.
+        port: Prefect server port (used in error messages).
         timeout: Maximum wait time in seconds.
         poll: Time between checks in seconds.
 
@@ -174,14 +176,24 @@ def _wait_for_healthy_or_death(
         exit_code = proc.poll()
         if exit_code is not None:
             tail = _read_log_tail(log_file)
-            msg = (
-                f"Prefect server exited during startup "
-                f"(exit code {exit_code}).\n\n"
-                f"Last log lines from {log_file}:\n{tail}\n\n"
-                f"To fix: check the full log above. If caused by a "
-                f"version change, reinitialize:\n"
-                f"  prefect-server init-db --reset"
-            )
+            if "address already in use" in tail.lower():
+                msg = (
+                    f"Port {port} is already in use.\n\n"
+                    f"If this is a stale prefect-submitit server:\n"
+                    f"    prefect-server stop\n"
+                    f"    prefect-server start --restart\n\n"
+                    f"To use a different port:\n"
+                    f"    prefect-server start --port <port>"
+                )
+            else:
+                msg = (
+                    f"Prefect server exited during startup "
+                    f"(exit code {exit_code}).\n\n"
+                    f"Last log lines from {log_file}:\n{tail}\n\n"
+                    f"To fix: check the full log above. If caused by a "
+                    f"version change, reinitialize:\n"
+                    f"  prefect-server init-db --reset"
+                )
             raise RuntimeError(msg)
 
         time.sleep(poll)
@@ -249,7 +261,7 @@ def start(
                 start_new_session=True,
             )
 
-        _wait_for_healthy_or_death(proc, config.api_url, log_file)
+        _wait_for_healthy_or_death(proc, config.api_url, log_file, config.port)
         discovery.write_discovery(config, proc.pid, backend)
         _write_prefect_version(config)
         return proc.pid

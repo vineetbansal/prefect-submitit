@@ -9,22 +9,71 @@ from unittest.mock import patch
 import pytest
 
 from prefect_submitit.server.config import (
+    _PG_BASE_PORT,
+    _PREFECT_BASE_PORT,
     DEFAULT_DATA_DIR,
-    DEFAULT_PG_PORT,
+    _user_port_offset,
     default_host,
+    default_pg_port,
     default_port,
     make_config,
     require_binary,
 )
 
 
+class TestUserPortOffset:
+    def test_deterministic(self):
+        assert _user_port_offset() == _user_port_offset()
+
+    def test_range_for_various_uids(self):
+        for uid in [0, 1, 999, 1000, 1001, 5432, 65534]:
+            with patch("prefect_submitit.server.config.os.getuid", return_value=uid):
+                offset = _user_port_offset()
+                assert 0 <= offset < 800, f"uid={uid}, offset={offset}"
+
+    def test_correlated_ports(self):
+        for uid in [0, 1, 999, 1000, 1001, 5432, 65534]:
+            with patch("prefect_submitit.server.config.os.getuid", return_value=uid):
+                offset = _user_port_offset()
+                assert default_port() == _PREFECT_BASE_PORT + 2 * offset
+                assert default_pg_port() == _PG_BASE_PORT + 2 * offset
+
+
 class TestDefaultPort:
     def test_range(self):
         port = default_port()
-        assert 4200 <= port <= 4999
+        assert 4200 <= port <= 5798
 
     def test_deterministic(self):
         assert default_port() == default_port()
+
+    def test_always_even(self):
+        assert default_port() % 2 == 0
+
+
+class TestDefaultPgPort:
+    def test_range(self):
+        port = default_pg_port()
+        assert 5433 <= port <= 7031
+
+    def test_deterministic(self):
+        assert default_pg_port() == default_pg_port()
+
+    def test_always_odd(self):
+        assert default_pg_port() % 2 == 1
+
+
+class TestPortParity:
+    def test_parity_invariant_across_uids(self):
+        for uid in range(1000, 1100):
+            with patch("prefect_submitit.server.config.os.getuid", return_value=uid):
+                assert default_port() % 2 == 0, f"uid={uid}"
+                assert default_pg_port() % 2 == 1, f"uid={uid}"
+
+    def test_no_overlap(self):
+        for uid in range(1000, 1800):
+            with patch("prefect_submitit.server.config.os.getuid", return_value=uid):
+                assert default_port() != default_pg_port()
 
 
 class TestDefaultHost:
@@ -73,7 +122,7 @@ class TestMakeConfig:
     def test_defaults(self):
         config = make_config()
         assert config.port == default_port()
-        assert config.pg_port == DEFAULT_PG_PORT
+        assert config.pg_port == default_pg_port()
         assert config.data_dir == DEFAULT_DATA_DIR
         assert config.pg_user == "prefect"
         assert config.pg_database == "prefect"
