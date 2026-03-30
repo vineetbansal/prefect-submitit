@@ -67,9 +67,11 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
 
     @property
     def state(self) -> State:
+        if self.is_done:
+            return Completed()
         slurm_state = self._job.state
         normalized = slurm_state.rstrip("+")
-        if normalized == "COMPLETED":
+        if normalized in ("COMPLETED", "COMPLETING"):
             return Completed()
         if self._is_terminal_failure(slurm_state):
             return Failed(message=f"SLURM: {slurm_state}")
