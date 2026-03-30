@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import os
 import re
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -127,8 +129,14 @@ def prefect_server(request, slurm_config):  # noqa: ARG001
     port = find_free_port()
     api_url = f"http://{hostname}:{port}/api"
 
+    # Isolate Prefect data to a temp directory so the server doesn't use
+    # (or corrupt) the user's ~/.prefect/.
+    prefect_home = tempfile.mkdtemp(prefix="prefect-test-")
+    env = {**os.environ, "PREFECT_HOME": prefect_home}
+
     proc = subprocess.Popen(
         ["prefect", "server", "start", "--host", "0.0.0.0", "--port", str(port)],
+        env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
