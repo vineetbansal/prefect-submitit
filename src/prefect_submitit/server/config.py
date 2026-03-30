@@ -9,19 +9,38 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_PG_PORT = 5433
+_PREFECT_BASE_PORT = 4200  # even
+_PG_BASE_PORT = 5433  # odd
 DEFAULT_DATA_DIR = Path.home() / ".prefect-submitit"
 PG_USER = "prefect"
 PG_DATABASE = "prefect"
+
+
+def _user_port_offset() -> int:
+    """Stable per-user offset for all service ports.
+
+    Returns:
+        Integer in [0, 800).
+    """
+    return os.getuid() % 800
 
 
 def default_port() -> int:
     """Compute a UID-based port to avoid conflicts on shared nodes.
 
     Returns:
-        Port in the range 4200-4999.
+        Even port in the range 4200-5798.
     """
-    return 4200 + (os.getuid() % 800)
+    return _PREFECT_BASE_PORT + 2 * _user_port_offset()
+
+
+def default_pg_port() -> int:
+    """Compute a UID-based PostgreSQL port to avoid conflicts on shared nodes.
+
+    Returns:
+        Odd port in the range 5433-7031.
+    """
+    return _PG_BASE_PORT + 2 * _user_port_offset()
 
 
 def default_host() -> str:
@@ -65,13 +84,13 @@ def make_config(
 
     Args:
         port: Prefect server port. Defaults to UID-based port.
-        pg_port: PostgreSQL port. Defaults to 5433.
+        pg_port: PostgreSQL port. Defaults to UID-based port.
 
     Returns:
         Fully populated ServerConfig.
     """
     port = port if port is not None else default_port()
-    pg_port = pg_port if pg_port is not None else DEFAULT_PG_PORT
+    pg_port = pg_port if pg_port is not None else default_pg_port()
     host = default_host()
     data_dir = DEFAULT_DATA_DIR
 

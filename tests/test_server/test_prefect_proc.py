@@ -130,7 +130,9 @@ class TestWaitForHealthyOrDeath:
         log = tmp_path / "server.log"
         log.write_text("")
         with patch(f"{MODULE}.discovery.health_check", return_value=True):
-            _wait_for_healthy_or_death(proc, "http://test/api", log, timeout=1)
+            _wait_for_healthy_or_death(
+                proc, "http://test/api", log, port=4242, timeout=1
+            )
 
     def test_process_dies_raises_with_log_tail(self, tmp_path):
         proc = MagicMock()
@@ -140,11 +142,14 @@ class TestWaitForHealthyOrDeath:
         log.write_text("Traceback:\n  migration error\nFATAL: schema mismatch")
         with patch(f"{MODULE}.discovery.health_check", return_value=False):
             with pytest.raises(RuntimeError, match="exited during startup") as exc_info:
-                _wait_for_healthy_or_death(proc, "http://test/api", log, timeout=5)
+                _wait_for_healthy_or_death(
+                    proc, "http://test/api", log, port=4242, timeout=5
+                )
             msg = str(exc_info.value)
             assert "exit code 1" in msg
             assert "FATAL: schema mismatch" in msg
             assert "init-db --reset" in msg
+            assert "already in use" not in msg
 
     def test_timeout_process_alive(self, tmp_path):
         proc = MagicMock(pid=12345)
@@ -154,7 +159,12 @@ class TestWaitForHealthyOrDeath:
         with patch(f"{MODULE}.discovery.health_check", return_value=False):
             with pytest.raises(RuntimeError, match="not healthy after") as exc_info:
                 _wait_for_healthy_or_death(
-                    proc, "http://test/api", log, timeout=0.1, poll=0.05
+                    proc,
+                    "http://test/api",
+                    log,
+                    port=4242,
+                    timeout=0.1,
+                    poll=0.05,
                 )
             msg = str(exc_info.value)
             assert "PID 12345 still running" in msg
@@ -168,7 +178,32 @@ class TestWaitForHealthyOrDeath:
         log.write_text("")
         with patch(f"{MODULE}.discovery.health_check", return_value=False):
             with pytest.raises(RuntimeError, match="no log output"):
-                _wait_for_healthy_or_death(proc, "http://test/api", log, timeout=5)
+                _wait_for_healthy_or_death(
+                    proc, "http://test/api", log, port=4242, timeout=5
+                )
+
+    def test_process_dies_address_in_use(self, tmp_path):
+        proc = MagicMock()
+        proc.poll.return_value = 1
+        proc.returncode = 1
+        log = tmp_path / "server.log"
+        log.write_text(
+            "INFO: Started server process\n"
+            "ERROR: [Errno 98] error while attempting to bind on address"
+            " ('0.0.0.0', 4242): address already in use"
+        )
+        with patch(f"{MODULE}.discovery.health_check", return_value=False):
+            with pytest.raises(
+                RuntimeError, match="Port 4242 is already in use"
+            ) as exc_info:
+                _wait_for_healthy_or_death(
+                    proc, "http://test/api", log, port=4242, timeout=5
+                )
+            msg = str(exc_info.value)
+            assert "prefect-server stop" in msg
+            assert "--restart" in msg
+            assert "--port" in msg
+            assert "init-db" not in msg
 
 
 class TestCheckPrefectVersion:
