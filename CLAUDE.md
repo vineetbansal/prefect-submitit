@@ -22,11 +22,16 @@ commands. The short `pixi` form is for user-facing docs only.
 ```bash
 pixi install                              # Install dependencies
 pixi run -e dev test                      # Run tests
-pixi run -e dev test-slurm                # Run SLURM integration tests
+pixi run -e dev test-slurm                # Run SLURM integration tests (cluster)
+pixi run -e dev test-slurm-docker         # Run SLURM integration tests (Docker)
 pixi run -e dev fmt                       # Format and lint
 pixi run prefect-start                    # Start Prefect server (background)
 pixi run prefect-stop                     # Stop Prefect server
 pixi run install-kernel                   # Register Jupyter kernel
+pixi run slurm-build                      # Build Docker SLURM image
+pixi run slurm-up                         # Start SLURM container
+pixi run slurm-down                       # Stop and remove SLURM container
+pixi run slurm-shell                      # Shell into running container
 pixi run python script.py                 # Run scripts
 ```
 
