@@ -31,6 +31,33 @@ class SlurmJobFailed(Exception):
     """Raised when a SLURM job fails."""
 
 
+def _unwrap_state(state: Any, raise_on_failure: bool, job_label: str) -> Any:
+    """Unwrap a Prefect State, respecting raise_on_failure.
+
+    Args:
+        state: The object to unwrap. If not a Prefect State, returned as-is.
+        raise_on_failure: If True, raise SlurmJobFailed for Failed states.
+        job_label: SLURM job/step identifier for error messages.
+
+    Returns:
+        The unwrapped result value, or None if the state is Failed
+        and raise_on_failure is False.
+
+    Raises:
+        SlurmJobFailed: When state is Failed and raise_on_failure is True.
+    """
+    if not isinstance(state, State):
+        return state
+    if state.is_failed():
+        if not raise_on_failure:
+            return None
+        exc = state.result(raise_on_failure=False)
+        exc_type = type(exc).__name__
+        msg = f"{job_label}: {exc_type}: {exc}"
+        raise SlurmJobFailed(msg) from exc
+    return state.result()
+
+
 class SlurmPrefectFuture(PrefectFuture[Any]):
     """Wrap submitit.Job to implement Prefect's PrefectFuture protocol."""
 
@@ -141,10 +168,9 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
         try:
             pickled_result = self._job.result()
             state = cloudpickle.loads(pickled_result)
-            if hasattr(state, "result"):
-                self._result_cache = state.result()
-            else:
-                self._result_cache = state
+            self._result_cache = _unwrap_state(
+                state, raise_on_failure, f"Job {self.slurm_job_id}"
+            )
 
             self._result_retrieved = True
             return self._result_cache
