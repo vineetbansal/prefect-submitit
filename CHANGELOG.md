@@ -7,6 +7,23 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-04-02
+
+### Added
+
+- Docker SLURM local dev environment: containerized single-node SLURM cluster
+  with full accounting (MariaDB + slurmdbd) for local development on laptops.
+- Pixi tasks for Docker workflow: `slurm-build`, `slurm-up`, `slurm-down`,
+  `slurm-shell`, and `test-slurm-docker`.
+- Example script `examples/slurm_submit_and_run.py` for the Docker environment.
+
+### Fixed
+
+- Stale SLURM state detection caused by submitit's `SlurmInfoWatcher`
+  exponential backoff (up to 600s). State queries now force-refresh sacct on
+  each poll iteration, eliminating flaky test failures and unreliable job state
+  tracking in long-running sessions.
+
 ## [0.1.5] - 2026-03-30
 
 ### Added
@@ -127,7 +144,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - Dependabot for GitHub Actions.
 
 [Unreleased]:
-  https://github.com/dexterity-systems/prefect-submitit/compare/v0.1.5...HEAD
+  https://github.com/dexterity-systems/prefect-submitit/compare/v0.1.6...HEAD
+[0.1.6]:
+  https://github.com/dexterity-systems/prefect-submitit/compare/v0.1.5...v0.1.6
 [0.1.5]:
   https://github.com/dexterity-systems/prefect-submitit/compare/v0.1.4...v0.1.5
 [0.1.4]:
