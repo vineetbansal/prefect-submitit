@@ -73,6 +73,7 @@ squeue                      # Show running/pending jobs
 sacct -j <jobid>            # Show job history and resource usage
 srun hostname               # Run a trivial job
 scancel <job_id>            # Cancel a job
-pixi run -e dev test-slurm  # Run SLURM integration tests
+pixi run -e dev test-sbatch-docker  # Run sbatch integration tests
+pixi run -e dev test-srun-docker   # Run srun integration tests (via salloc)
 prefect-server status       # Check Prefect server health
 ```
