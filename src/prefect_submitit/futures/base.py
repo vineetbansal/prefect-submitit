@@ -66,11 +66,16 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
     def is_done(self) -> bool:
         return self._done
 
+    def _get_slurm_state(self) -> str:
+        """Get fresh SLURM job state, bypassing submitit's watcher backoff."""
+        info = self._job.get_info(mode="force")
+        return info.get("State") or "UNKNOWN"
+
     @property
     def state(self) -> State:
         if self.is_done:
             return Completed()
-        slurm_state = self._job.state
+        slurm_state = self._get_slurm_state()
         normalized = slurm_state.rstrip("+")
         if normalized in ("COMPLETED", "COMPLETING"):
             return Completed()
@@ -98,10 +103,10 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
         effective_timeout = timeout if timeout is not None else self._max_poll_time
         start = time.time()
 
-        while not self._job.done():
+        while not self._job.done(force_check=True):
             elapsed = time.time() - start
             if effective_timeout is not None and elapsed > effective_timeout:
-                slurm_state = self._job.state
+                slurm_state = self._get_slurm_state()
                 msg = (
                     f"Job {self.slurm_job_id} did not complete "
                     f"within {effective_timeout:.0f}s "
@@ -109,14 +114,14 @@ class SlurmPrefectFuture(PrefectFuture[Any]):
                 )
                 raise TimeoutError(msg)
 
-            slurm_state = self._job.state
+            slurm_state = self._get_slurm_state()
             if self._is_terminal_failure(slurm_state):
                 self._raise_job_failed(slurm_state)
 
             time.sleep(self._poll_interval)
 
         # Post-loop check: job.done() returned True but may have failed
-        slurm_state = self._job.state
+        slurm_state = self._get_slurm_state()
         if self._is_terminal_failure(slurm_state):
             self._raise_job_failed(slurm_state)
 

@@ -21,6 +21,7 @@ def _mock_job(job_id: str = "12345", state: str = "PENDING") -> MagicMock:
     job = MagicMock()
     job.job_id = job_id
     job.state = state
+    job.get_info.return_value = {"State": state}
     job.done.return_value = state == "COMPLETED"
     return job
 
