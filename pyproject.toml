@@ -20,7 +20,11 @@ classifiers = [
     "Topic :: System :: Distributed Computing",
     "Topic :: Scientific/Engineering",
 ]
-dependencies = []
+dependencies = [
+    "prefect>=3.6,<4.0",
+    "submitit",
+    "cloudpickle",
+]
 
 [project.scripts]
 prefect-server = "prefect_submitit.server.cli:main"
@@ -92,7 +96,8 @@ twine = ">=6.2.0,<7"
 
 [tool.pixi.feature.dev.tasks]
 test = "pytest"
-test-slurm = { cmd = "pytest --run-slurm", env = { SLURM_TEST_PARTITION = "cpu" } }
+test-slurm = { cmd = "pytest --run-slurm tests/integration/", env = { SLURM_TEST_PARTITION = "cpu" } }
+test-slurm-docker = { cmd = "pytest --run-slurm tests/integration/", env = { SLURM_TEST_PARTITION = "debug" } }
 fmt = "ruff format . && ruff check --fix ."
 install-hooks = "pre-commit install"
 pre-commit = "pre-commit run --all-files"
@@ -108,6 +113,10 @@ upload-pypi = "python -m twine upload dist/*"
 prefect-start = "prefect-server start --bg"
 prefect-stop = "prefect-server stop --force"
 install-kernel = "python -m ipykernel install --user --name=prefect-submitit --display-name='Prefect-Submitit'"
+slurm-build = "docker compose -f docker/docker-compose.yml build"
+slurm-up = "docker compose -f docker/docker-compose.yml up -d"
+slurm-down = "docker compose -f docker/docker-compose.yml down -v"
+slurm-shell = "docker compose -f docker/docker-compose.yml exec -u docker slurm bash"
 
 # =============================================================================
 # ENVIRONMENTS
