@@ -318,6 +318,14 @@ class SlurmTaskRunner(TaskRunner):
         )
 
         if self.execution_mode == ExecutionMode.SRUN:
+            task_slurm_kwargs = getattr(task.fn, "_slurm_kwargs", {})
+            if task_slurm_kwargs:
+                logger.warning(
+                    "Task '%s' has slurm_kwargs %s, but the runner is in SRUN mode "
+                    "which bypasses submitit — per-task SLURM overrides are ignored.",
+                    task.name,
+                    task_slurm_kwargs,
+                )
             return self._backend.submit_one(wrapped_call, task_run_id)
 
         task_slurm_kwargs = getattr(task.fn, "_slurm_kwargs", {})
@@ -466,6 +474,14 @@ class SlurmTaskRunner(TaskRunner):
 
         # -- SRUN mode: dispatch via srun backend ----------------------------
         if self.execution_mode == ExecutionMode.SRUN:
+            task_slurm_kwargs = getattr(task.fn, "_slurm_kwargs", {})
+            if task_slurm_kwargs:
+                logger.warning(
+                    "Task '%s' has slurm_kwargs %s, but the runner is in SRUN mode "
+                    "which bypasses submitit — per-task SLURM overrides are ignored.",
+                    task.name,
+                    task_slurm_kwargs,
+                )
             return self._map_srun(
                 task, iterable_params, static_params, map_length, logger
             )
