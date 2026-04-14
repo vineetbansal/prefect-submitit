@@ -471,45 +471,58 @@ class SlurmTaskRunner(TaskRunner):
             )
 
         # -- SLURM / LOCAL mode: dispatch via submitit -----------------------
-        if self.units_per_worker > 1:
-            if len(iterable_params) > 1:
-                msg = (
-                    "Multi-argument map() is not supported with units_per_worker > 1. "
-                    f"Found {len(iterable_params)} iterable parameters: "
-                    f"{list(iterable_params.keys())}. "
-                    "Use units_per_worker=1 for multi-arg map, or pre-zip arguments "
-                    "into single iterable."
+        task_slurm_kwargs = getattr(task.fn, "_slurm_kwargs", {})
+        # update_parameters mutates shared executor state, so this overriding of
+        # slurm_kwargs must be atomic across concurrent submissions (same as submit()).
+        with self._submit_lock:
+            if task_slurm_kwargs:
+                self._executor.update_parameters(
+                    **{**self._base_executor_params, **task_slurm_kwargs}
                 )
-                raise ValueError(msg)
-            param_name = next(iter(iterable_params.keys()))
-            items = iterable_params[param_name]
-            num_batches = (
-                len(items) + self.units_per_worker - 1
-            ) // self.units_per_worker
-            logger.info(
-                "Submitting %s items as %s batched SLURM jobs "
-                "(units_per_worker=%s, partition=%s, parallelism=%s)",
-                len(items),
-                num_batches,
-                self.units_per_worker,
-                self.partition,
-                self.slurm_array_parallelism,
-            )
-            batched_futures = self._submit_batched_job_array(
-                task, items, param_name, static_params
-            )
-            return PrefectFutureList(batched_futures)  # type: ignore[abstract]
+            try:
+                if self.units_per_worker > 1:
+                    if len(iterable_params) > 1:
+                        msg = (
+                            "Multi-argument map() is not supported with units_per_worker > 1. "
+                            f"Found {len(iterable_params)} iterable parameters: "
+                            f"{list(iterable_params.keys())}. "
+                            "Use units_per_worker=1 for multi-arg map, or pre-zip arguments "
+                            "into single iterable."
+                        )
+                        raise ValueError(msg)
+                    param_name = next(iter(iterable_params.keys()))
+                    items = iterable_params[param_name]
+                    num_batches = (
+                        len(items) + self.units_per_worker - 1
+                    ) // self.units_per_worker
+                    logger.info(
+                        "Submitting %s items as %s batched SLURM jobs "
+                        "(units_per_worker=%s, partition=%s, parallelism=%s)",
+                        len(items),
+                        num_batches,
+                        self.units_per_worker,
+                        self.partition,
+                        self.slurm_array_parallelism,
+                    )
+                    futures: list[Any] = self._submit_batched_job_array(
+                        task, items, param_name, static_params
+                    )
+                else:
+                    logger.info(
+                        "Submitting %s tasks as SLURM job array (partition=%s, parallelism=%s)",
+                        map_length,
+                        self.partition,
+                        self.slurm_array_parallelism,
+                    )
+                    futures = self._submit_job_array(
+                        task, iterable_params, static_params, map_length
+                    )
+            finally:
+                if task_slurm_kwargs:
+                    # Restore to runner defaults.
+                    self._executor.update_parameters(**self._base_executor_params)
 
-        logger.info(
-            "Submitting %s tasks as SLURM job array (partition=%s, parallelism=%s)",
-            map_length,
-            self.partition,
-            self.slurm_array_parallelism,
-        )
-        array_futures = self._submit_job_array(
-            task, iterable_params, static_params, map_length
-        )
-        return PrefectFutureList(array_futures)  # type: ignore[abstract]
+        return PrefectFutureList(futures)  # type: ignore[abstract]
 
     def _map_srun(
         self,
