@@ -6,7 +6,7 @@ import pytest
 from prefect import flow
 
 from prefect_submitit.task import task as slurm_task
-from tests.integration.tasks import add, get_slurm_cpus_per_task
+from tests.integration.tasks import get_slurm_cpus_per_task
 
 pytestmark = pytest.mark.slurm
 
@@ -45,7 +45,9 @@ class TestSubmitSlurmKwargsOverride:
         result = compute()
         assert result == "2", f"Expected SLURM_CPUS_PER_TASK=2, got {result!r}"
 
-    def test_override_does_not_affect_subsequent_task(self, make_slurm_runner, slurm_jobs):
+    def test_override_does_not_affect_subsequent_task(
+        self, make_slurm_runner, slurm_jobs
+    ):
         """Runner defaults are restored after a per-task override."""
         runner = make_slurm_runner(cpus_per_task=1)
 
@@ -95,11 +97,13 @@ class TestMapSlurmKwargsOverride:
             return [f.result() for f in futures]
 
         results = compute()
-        assert all(
-            r == "2" for r in results
-        ), f"Expected all SLURM_CPUS_PER_TASK=2, got {results!r}"
+        assert all(r == "2" for r in results), (
+            f"Expected all SLURM_CPUS_PER_TASK=2, got {results!r}"
+        )
 
-    def test_override_does_not_affect_subsequent_map(self, make_slurm_runner, slurm_jobs):
+    def test_override_does_not_affect_subsequent_map(
+        self, make_slurm_runner, slurm_jobs
+    ):
         """Runner defaults are restored after a per-task override map."""
         runner = make_slurm_runner(cpus_per_task=1)
 
@@ -109,18 +113,19 @@ class TestMapSlurmKwargsOverride:
             for f in futures_override:
                 slurm_jobs.append(f.slurm_job_id)
 
-            futures_plain = get_slurm_cpus_per_task.map([None, None])
-            for f in futures_plain:
-                slurm_jobs.append(f.slurm_job_id)
+            f1 = get_slurm_cpus_per_task.submit()
+            f2 = get_slurm_cpus_per_task.submit()
+            slurm_jobs.append(f1.slurm_job_id)
+            slurm_jobs.append(f2.slurm_job_id)
 
             override_results = [f.result() for f in futures_override]
-            plain_results = [f.result() for f in futures_plain]
+            plain_results = [f1.result(), f2.result()]
             return override_results, plain_results
 
         cpus_override, cpus_plain = compute()
-        assert all(
-            r == "2" for r in cpus_override
-        ), f"Expected override=2, got {cpus_override!r}"
-        assert all(
-            r == "1" for r in cpus_plain
-        ), f"Expected plain=1, got {cpus_plain!r}"
+        assert all(r == "2" for r in cpus_override), (
+            f"Expected override=2, got {cpus_override!r}"
+        )
+        assert all(r == "1" for r in cpus_plain), (
+            f"Expected plain=1, got {cpus_plain!r}"
+        )
