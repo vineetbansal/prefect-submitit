@@ -11,13 +11,8 @@ from tests.integration.tasks import get_slurm_cpus_per_task
 pytestmark = pytest.mark.slurm
 
 
-# ---------------------------------------------------------------------------
-# Module-level tasks with _slurm_kwargs attached
-# ---------------------------------------------------------------------------
-
-
 @slurm_task(slurm_kwargs={"cpus_per_task": 2})
-def get_cpus_with_override(x: int = 0) -> str | None:
+def get_cpus_with_override(x: int = 0) -> str | None:  # noqa: ARG001
     """Report SLURM_CPUS_PER_TASK; submitted with cpus_per_task=2 override.
 
     Args:
@@ -66,19 +61,6 @@ class TestSubmitSlurmKwargsOverride:
         assert cpus_override == "2", f"Expected override=2, got {cpus_override!r}"
         # Plain task should inherit the runner default (1 CPU).
         assert cpus_plain == "1", f"Expected plain=1, got {cpus_plain!r}"
-
-    def test_no_override_uses_runner_default(self, make_slurm_runner, slurm_jobs):
-        """Task without _slurm_kwargs uses the runner's cpus_per_task."""
-        runner = make_slurm_runner(cpus_per_task=1)
-
-        @flow(task_runner=runner)
-        def compute():
-            future = get_slurm_cpus_per_task.submit()
-            slurm_jobs.append(future.slurm_job_id)
-            return future.result()
-
-        result = compute()
-        assert result == "1", f"Expected SLURM_CPUS_PER_TASK=1, got {result!r}"
 
 
 class TestMapSlurmKwargsOverride:
